@@ -1,151 +1,215 @@
 import { useEffect, useRef, useState } from 'react';
+import Peer from 'simple-peer';
+import { Socket } from 'socket.io-client';
 
-export const useWebRTC = (sessionId: string, userId: string, socket: any) => {
+interface UseWebRTCProps {
+  socket: Socket | null;
+  sessionId: string;
+  userId: string;
+}
+
+export const useWebRTC = ({ socket, sessionId, userId }: UseWebRTCProps) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  
+  const peerRef = useRef<Peer.Instance | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
+  // Toggle video
+  const toggleVideo = () => {
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isVideoEnabled;
+        setIsVideoEnabled(!isVideoEnabled);
+      }
+    }
+  };
+
+  // Toggle audio
+  const toggleAudio = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !isAudioEnabled;
+        setIsAudioEnabled(!isAudioEnabled);
+      }
+    }
+  };
+
+  // Start call
   const startCall = async () => {
     try {
+      // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       });
+      
+      localStreamRef.current = stream;
       setLocalStream(stream);
+      setIsVideoEnabled(true);
+      setIsAudioEnabled(true);
 
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      // Create peer connection
+      const peer = new Peer({
+        initiator: true,
+        trickle: false,
+        stream: stream
       });
 
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+      peer.on('signal', (data) => {
+        socket?.emit('webrtc-offer', {
+          sessionId,
+          signal: data
+        });
       });
 
-      pc.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('webrtc-ice-candidate', {
-            sessionId,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socket.emit('webrtc-offer', {
-        sessionId,
-        offer: pc.localDescription
+      peer.on('stream', (remoteStream) => {
+        setRemoteStream(remoteStream);
       });
 
-      peerConnectionRef.current = pc;
+      peer.on('error', (err) => {
+        console.error('Peer error:', err);
+      });
+
+      peerRef.current = peer;
       setIsCallActive(true);
     } catch (error) {
-      console.error('Error starting call:', error);
+      console.error('Error accessing media devices:', error);
+      alert('Please allow camera and microphone access');
     }
   };
 
+  // End call
   const endCall = () => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
     }
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      setLocalStream(null);
+    
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
+    
+    setLocalStream(null);
     setRemoteStream(null);
     setIsCallActive(false);
+    
+    socket?.emit('end-call', { sessionId });
   };
 
-  useEffect(() => {
-    if (!socket) return;
+  // Handle incoming offer
+  const handleOffer = async (signal: any, fromUserId: string) => {
+    if (fromUserId === userId) return;
 
-    const handleOffer = async ({ offer, fromUserId }: any) => {
-      if (fromUserId === userId) return;
-
-      try {
+    try {
+      // Get user media if not already
+      if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true
         });
+        localStreamRef.current = stream;
         setLocalStream(stream);
+        setIsVideoEnabled(true);
+        setIsAudioEnabled(true);
+      }
 
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
+      // Create peer connection
+      const peer = new Peer({
+        initiator: false,
+        trickle: false,
+        stream: localStreamRef.current
+      });
 
-        stream.getTracks().forEach(track => {
-          pc.addTrack(track, stream);
-        });
-
-        pc.ontrack = (event) => {
-          setRemoteStream(event.streams[0]);
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('webrtc-ice-candidate', {
-              sessionId,
-              candidate: event.candidate
-            });
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit('webrtc-answer', {
+      peer.on('signal', (data) => {
+        socket?.emit('webrtc-answer', {
           sessionId,
-          answer: pc.localDescription
+          signal: data
         });
+      });
 
-        peerConnectionRef.current = pc;
-        setIsCallActive(true);
-      } catch (error) {
-        console.error('Error handling offer:', error);
+      peer.on('stream', (remoteStream) => {
+        setRemoteStream(remoteStream);
+      });
+
+      peer.on('error', (err) => {
+        console.error('Peer error:', err);
+      });
+
+      peer.signal(signal);
+      peerRef.current = peer;
+      setIsCallActive(true);
+    } catch (error) {
+      console.error('Error handling offer:', error);
+    }
+  };
+
+  // Handle answer
+  const handleAnswer = (signal: any) => {
+    if (peerRef.current) {
+      peerRef.current.signal(signal);
+    }
+  };
+
+  // Set up socket listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    const onOffer = ({ signal, fromUserId }: any) => {
+      handleOffer(signal, fromUserId);
+    };
+
+    const onAnswer = ({ signal }: any) => {
+      handleAnswer(signal);
+    };
+
+    const onIceCandidate = ({ candidate }: any) => {
+      if (peerRef.current) {
+        peerRef.current.signal(candidate);
       }
     };
 
-    const handleAnswer = async ({ answer }: any) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(
-          new RTCSessionDescription(answer)
-        );
-      }
-    };
-
-    const handleIceCandidate = async ({ candidate }: any) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(
-          new RTCIceCandidate(candidate)
-        );
-      }
-    };
-
-    socket.on('webrtc-offer', handleOffer);
-    socket.on('webrtc-answer', handleAnswer);
-    socket.on('webrtc-ice-candidate', handleIceCandidate);
-
-    return () => {
-      socket.off('webrtc-offer', handleOffer);
-      socket.off('webrtc-answer', handleAnswer);
-      socket.off('webrtc-ice-candidate', handleIceCandidate);
+    const onCallEnded = () => {
       endCall();
     };
+
+    socket.on('webrtc-offer', onOffer);
+    socket.on('webrtc-answer', onAnswer);
+    socket.on('webrtc-ice-candidate', onIceCandidate);
+    socket.on('call-ended', onCallEnded);
+    socket.on('peer-ended-call', onCallEnded);
+
+    return () => {
+      socket.off('webrtc-offer', onOffer);
+      socket.off('webrtc-answer', onAnswer);
+      socket.off('webrtc-ice-candidate', onIceCandidate);
+      socket.off('call-ended', onCallEnded);
+      socket.off('peer-ended-call', onCallEnded);
+    };
   }, [socket, sessionId, userId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      endCall();
+    };
+  }, []);
 
   return {
     localStream,
     remoteStream,
     isCallActive,
+    isVideoEnabled,
+    isAudioEnabled,
     startCall,
-    endCall
+    endCall,
+    toggleVideo,
+    toggleAudio
   };
 };
