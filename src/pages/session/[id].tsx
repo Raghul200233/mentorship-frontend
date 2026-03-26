@@ -58,7 +58,7 @@ export default function SessionPage({ session }: any) {
       <div className="h-screen flex flex-col overflow-hidden">
         {/* Invite Banner */}
         {isMentor && (
-          <div className="bg-blue-900/30 border-b border-blue-500/30 p-2 flex-shrink-0">
+          <div className="bg-blue-900/30 border-b border-blue-500/30 p-2 flex-shrink-0 z-10">
             <div className="flex items-center justify-between gap-2">
               <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
                 {inviteLink}
@@ -87,9 +87,9 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Desktop Layout */}
+          {/* Desktop Layout - Sidebar with lower z-index */}
           {!isMobile && (
-            <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10">
+            <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10 pointer-events-auto">
               <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
               </div>
@@ -110,7 +110,7 @@ export default function SessionPage({ session }: any) {
               {/* Floating Video Button */}
               <button
                 onClick={() => setShowVideoModal(true)}
-                className="fixed bottom-4 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
+                className="fixed bottom-4 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-30"
               >
                 🎥
               </button>
@@ -119,7 +119,7 @@ export default function SessionPage({ session }: any) {
               {!showChat && (
                 <button
                   onClick={() => setShowChat(true)}
-                  className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-20"
+                  className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-30"
                 >
                   💬
                 </button>
@@ -136,9 +136,9 @@ export default function SessionPage({ session }: any) {
                 />
               )}
               
-              {/* Chat Panel */}
+              {/* Chat Panel - Full Screen Overlay */}
               {showChat && (
-                <div className="absolute inset-0 z-30 bg-gray-900 flex flex-col">
+                <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
                   <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">
                     <h3 className="text-white font-semibold">Chat</h3>
                     <button

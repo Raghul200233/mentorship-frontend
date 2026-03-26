@@ -97,17 +97,18 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      <div className="bg-gray-800 p-3 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2">
+      {/* Header with Language Selector - Higher z-index */}
+      <div className="bg-gray-800 p-3 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2 sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <h3 className="text-white font-semibold text-sm sm:text-base">✏️ Collaborative Code Editor</h3>
           <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Real-time Sync</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-gray-700 px-3 py-1.5 rounded-lg">
           <label className="text-gray-300 text-xs sm:text-sm font-medium">Language:</label>
           <select
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
-            className="bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium cursor-pointer"
+            className="bg-gray-800 text-white px-3 py-1 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium cursor-pointer"
             style={{ minWidth: '120px' }}
           >
             {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
@@ -118,7 +119,7 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
           </select>
         </div>
       </div>
-      <div className="flex-1">
+      <div className="flex-1 relative">
         <MonacoEditor
           height="100%"
           language={language}

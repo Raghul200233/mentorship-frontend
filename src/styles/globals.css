@@ -33,3 +33,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
 }
+
+.code-editor-header {
+  position: relative;
+  z-index: 20;
+  background: #1f2937;
+}
+
+.sidebar-container {
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.language-selector {
+  position: relative;
+  z-index: 30;
+}
+
+.mobile-fab {
+  z-index: 30;
+}
+
+.chat-overlay {
+  z-index: 40;
+}
+
+.video-modal {
+  z-index: 50;
+}
