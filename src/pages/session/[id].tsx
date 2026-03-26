@@ -85,53 +85,15 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Floating Video Button (Mobile) */}
-          {isMobile && !showChat && (
-            <button
-              onClick={() => setShowChat(true)}
-              className="fixed bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
-            >
-              💬
-            </button>
-          )}
-          
-          {/* Floating Chat Panel (Mobile) */}
-          {isMobile && showChat && (
-            <div className="absolute inset-0 z-30 bg-gray-900 flex flex-col">
-              <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">
-                <h3 className="text-white font-semibold">Chat</h3>
-                <button
-                  onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-xl"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1">
-                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-              </div>
-            </div>
-          )}
-          
-          {/* Floating Video (Mobile - Small Window) */}
-          {isMobile && (
-            <div className="fixed bottom-4 left-4 z-20 w-32 h-24 bg-gray-800 rounded-lg shadow-lg overflow-hidden border-2 border-blue-500">
-              <VideoCall 
-                socket={socket} 
-                userId={session.user.id} 
-                sessionId={id as string}
-                isMentor={isMentor}
-              />
-            </div>
-          )}
-          
-          {/* Desktop Layout - Video and Chat Sidebar */}
+          {/* Desktop Layout - Chat and Video Sidebar */}
           {!isMobile && (
             <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10">
-              <div className="flex-1 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+              {/* Chat Panel */}
+              <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
               </div>
-              <div className="h-64 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+              {/* Video Panel - Fixed height with controls visible */}
+              <div className="h-80 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <VideoCall 
                   socket={socket} 
                   userId={session.user.id} 
@@ -140,6 +102,49 @@ export default function SessionPage({ session }: any) {
                 />
               </div>
             </div>
+          )}
+          
+          {/* Mobile Layout */}
+          {isMobile && (
+            <>
+              {/* Floating Chat Button */}
+              {!showChat && (
+                <button
+                  onClick={() => setShowChat(true)}
+                  className="fixed bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
+                >
+                  💬
+                </button>
+              )}
+              
+              {/* Floating Video (Mobile - Small Window) */}
+              <div className="fixed bottom-4 left-4 z-20 w-36 h-28 bg-gray-800 rounded-lg shadow-lg overflow-hidden border-2 border-blue-500">
+                <VideoCall 
+                  socket={socket} 
+                  userId={session.user.id} 
+                  sessionId={id as string}
+                  isMentor={isMentor}
+                />
+              </div>
+              
+              {/* Chat Panel (Mobile - Full Screen Overlay) */}
+              {showChat && (
+                <div className="absolute inset-0 z-30 bg-gray-900 flex flex-col">
+                  <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">
+                    <h3 className="text-white font-semibold">Chat</h3>
+                    <button
+                      onClick={() => setShowChat(false)}
+                      className="text-gray-400 hover:text-white text-xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         
