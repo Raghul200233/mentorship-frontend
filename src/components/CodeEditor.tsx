@@ -40,11 +40,21 @@ const DEFAULT_CODE: Record<string, string> = {
 export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
   const editorRef = useRef<any>(null)
   const isLocalChange = useRef(false)
+  const isMounted = useRef(true)
+
+  useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!socket) return
 
     const handleCodeUpdate = (data: { code: string, language: string }) => {
+      if (!isMounted.current) return
+      
       if (!isLocalChange.current && editorRef.current) {
         setCode(data.code)
         if (data.language && data.language !== language) {
@@ -67,7 +77,7 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
   }, [socket, setCode, language, setLanguage])
 
   const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined) {
+    if (value !== undefined && isMounted.current) {
       isLocalChange.current = true
       setCode(value)
       if (socket) {
@@ -84,6 +94,8 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
   }
 
   const handleLanguageChange = (newLanguage: string) => {
+    if (!isMounted.current) return
+    
     setLanguage(newLanguage)
     const newCode = DEFAULT_CODE[newLanguage] || DEFAULT_CODE.javascript
     setCode(newCode)
@@ -97,17 +109,17 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      <div className="bg-gray-800 p-2 sm:p-4 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2">
-        <div className="flex items-center gap-2">
-          <h3 className="text-white font-semibold text-sm sm:text-base">✏️ Code Editor</h3>
-          <span className="text-xs bg-blue-600 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Real-time</span>
+      <div className="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <h3 className="text-white font-semibold">✏️ Collaborative Code Editor</h3>
+          <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Real-time Sync</span>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-gray-300 text-xs sm:text-sm">Language:</label>
+        <div className="flex items-center gap-3">
+          <label className="text-gray-300 text-sm">Language:</label>
           <select
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
-            className="bg-gray-700 text-white px-2 sm:px-3 py-1 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm"
+            className="bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
           >
             {Object.keys(LANGUAGE_CONFIGS).map((lang) => (
               <option key={lang} value={lang}>
@@ -126,14 +138,13 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
           onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: false },
-            fontSize: 12,
+            fontSize: 14,
             automaticLayout: true,
             scrollBeyondLastLine: false,
             wordWrap: 'on',
             suggestOnTriggerCharacters: true,
             formatOnPaste: true,
             formatOnType: true,
-            readOnly: false,
           }}
         />
       </div>

@@ -15,13 +15,16 @@ export function Chat({ socket, userId, sessionId }: any) {
   const [userName, setUserName] = useState('')
 
   useEffect(() => {
+    // Set a default username from userId
     setUserName(userId?.substring(0, 8) || 'User')
   }, [userId])
 
   useEffect(() => {
     if (!socket) return
 
+    // Listen for incoming messages
     socket.on('chat-message', (message: Message) => {
+      console.log('📨 Received message:', message)
       setMessages(prev => [...prev, message])
     })
 
@@ -45,6 +48,9 @@ export function Chat({ socket, userId, sessionId }: any) {
       timestamp: new Date()
     }
 
+    console.log('📤 Sending message:', message)
+    
+    // Emit to server which will broadcast to all in session
     socket.emit('chat-message', { sessionId, message })
     setInputText('')
   }
@@ -64,12 +70,12 @@ export function Chat({ socket, userId, sessionId }: any) {
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      <div className="bg-gray-700 p-3 sm:p-4 border-b border-gray-600">
-        <h3 className="text-white font-semibold text-sm sm:text-base">💬 Chat</h3>
-        <p className="text-gray-400 text-xs mt-1 hidden sm:block">Discuss and share ideas</p>
+      <div className="bg-gray-700 p-4 border-b border-gray-600">
+        <h3 className="text-white font-semibold">💬 Chat</h3>
+        <p className="text-gray-400 text-xs mt-1">Discuss and share ideas</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="text-center text-gray-500 text-sm py-8">
             No messages yet. Start the conversation!
@@ -90,7 +96,7 @@ export function Chat({ socket, userId, sessionId }: any) {
               )}
               <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-lg p-2 sm:p-3 ${
+                  className={`max-w-[85%] rounded-lg p-3 ${
                     isOwnMessage
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-700 text-gray-200'
@@ -113,7 +119,7 @@ export function Chat({ socket, userId, sessionId }: any) {
         <div ref={messagesEndRef} />
       </div>
       
-      <div className="p-3 sm:p-4 border-t border-gray-700">
+      <div className="p-4 border-t border-gray-700">
         <div className="flex space-x-2">
           <input
             type="text"
@@ -121,11 +127,11 @@ export function Chat({ socket, userId, sessionId }: any) {
             onChange={(e) => setInputText(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
             placeholder="Type a message..."
-            className="flex-1 px-3 sm:px-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
             onClick={sendMessage}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg transition text-sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
           >
             Send
           </button>
