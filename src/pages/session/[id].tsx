@@ -12,8 +12,18 @@ export default function SessionPage({ session }: any) {
   const { socket, isConnected } = useSocket(id as string, session?.user?.id)
   const [code, setCode] = useState('// Start coding here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n')
   const [language, setLanguage] = useState('javascript')
-  const [showInvite, setShowInvite] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showChat, setShowChat] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => {
     if (!session) {
@@ -31,7 +41,7 @@ export default function SessionPage({ session }: any) {
   if (!session || !id) {
     return (
       <Layout session={session}>
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-full">
           <div className="text-white">Loading...</div>
         </div>
       </Layout>
@@ -43,64 +53,103 @@ export default function SessionPage({ session }: any) {
 
   return (
     <Layout session={session}>
-      {/* Invite Banner */}
-      {isMentor && (
-        <div className="bg-blue-900/30 border-b border-blue-500/30 p-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-blue-400 text-sm">🔗 Share this link with your student:</span>
-              <code className="bg-gray-800 px-3 py-1 rounded text-xs text-gray-300 break-all">
+      <div className="h-screen flex flex-col overflow-hidden">
+        {/* Invite Banner - Only for Mentor */}
+        {isMentor && (
+          <div className="bg-blue-900/30 border-b border-blue-500/30 p-2 flex-shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
                 {inviteLink}
               </code>
+              <button
+                onClick={copyInviteLink}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs transition whitespace-nowrap"
+              >
+                {copied ? '✓' : '📋'}
+              </button>
             </div>
-            <button
-              onClick={copyInviteLink}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition whitespace-nowrap"
-            >
-              {copied ? '✓ Copied!' : '📋 Copy Link'}
-            </button>
           </div>
-        </div>
-      )}
-      
-      <div className="h-screen flex flex-col lg:flex-row">
-        {/* LEFT PANEL - Code Editor */}
-        <div className="lg:w-2/3 flex flex-col border-r border-gray-700">
-          <CodeEditor 
-            socket={socket} 
-            code={code} 
-            setCode={setCode} 
-            sessionId={id as string}
-            language={language}
-            setLanguage={setLanguage}
-          />
-        </div>
+        )}
         
-        {/* RIGHT PANEL - Chat and Video */}
-        <div className="lg:w-1/3 flex flex-col">
-          {/* Chat Section */}
-          <div className="h-1/2 border-b border-gray-700">
-            <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-          </div>
-          
-          {/* Video Section */}
-          <div className="h-1/2">
-            <VideoCall 
+        {/* Main Content */}
+        <div className="flex-1 relative overflow-hidden">
+          {/* Code Editor - Full Screen */}
+          <div className="absolute inset-0">
+            <CodeEditor 
               socket={socket} 
-              userId={session.user.id} 
+              code={code} 
+              setCode={setCode} 
               sessionId={id as string}
-              isMentor={isMentor}
+              language={language}
+              setLanguage={setLanguage}
             />
           </div>
+          
+          {/* Floating Video Button (Mobile) */}
+          {isMobile && !showChat && (
+            <button
+              onClick={() => setShowChat(true)}
+              className="fixed bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
+            >
+              💬
+            </button>
+          )}
+          
+          {/* Floating Chat Panel (Mobile) */}
+          {isMobile && showChat && (
+            <div className="absolute inset-0 z-30 bg-gray-900 flex flex-col">
+              <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">
+                <h3 className="text-white font-semibold">Chat</h3>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="text-gray-400 hover:text-white text-xl"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1">
+                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+              </div>
+            </div>
+          )}
+          
+          {/* Floating Video (Mobile - Small Window) */}
+          {isMobile && (
+            <div className="fixed bottom-4 left-4 z-20 w-32 h-24 bg-gray-800 rounded-lg shadow-lg overflow-hidden border-2 border-blue-500">
+              <VideoCall 
+                socket={socket} 
+                userId={session.user.id} 
+                sessionId={id as string}
+                isMentor={isMentor}
+              />
+            </div>
+          )}
+          
+          {/* Desktop Layout - Video and Chat Sidebar */}
+          {!isMobile && (
+            <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10">
+              <div className="flex-1 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+              </div>
+              <div className="h-64 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                <VideoCall 
+                  socket={socket} 
+                  userId={session.user.id} 
+                  sessionId={id as string}
+                  isMentor={isMentor}
+                />
+              </div>
+            </div>
+          )}
         </div>
+        
+        {/* Connection Status */}
+        {!isConnected && (
+          <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
+            Connecting...
+          </div>
+        )}
       </div>
-      
-      {/* Connection Status Indicator */}
-      {!isConnected && (
-        <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm">
-          Connecting to server...
-        </div>
-      )}
     </Layout>
   )
 }
