@@ -1,6 +1,7 @@
 import { Layout } from '@/components/Layout'
 import { Chat } from '@/components/Chat'
 import { VideoCall } from '@/components/VideoCall'
+import { MobileVideoCall } from '@/components/MobileVideoCall'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useSocket } from '@/hooks/useSocket'
 import { useRouter } from 'next/router'
@@ -14,6 +15,7 @@ export default function SessionPage({ session }: any) {
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showVideoModal, setShowVideoModal] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function SessionPage({ session }: any) {
   return (
     <Layout session={session}>
       <div className="h-screen flex flex-col overflow-hidden">
-        {/* Invite Banner - Only for Mentor */}
+        {/* Invite Banner */}
         {isMentor && (
           <div className="bg-blue-900/30 border-b border-blue-500/30 p-2 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
@@ -85,14 +87,12 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Desktop Layout - Chat and Video Sidebar */}
+          {/* Desktop Layout */}
           {!isMobile && (
             <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10">
-              {/* Chat Panel */}
               <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
               </div>
-              {/* Video Panel - Fixed height with controls visible */}
               <div className="h-80 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <VideoCall 
                   socket={socket} 
@@ -107,27 +107,36 @@ export default function SessionPage({ session }: any) {
           {/* Mobile Layout */}
           {isMobile && (
             <>
+              {/* Floating Video Button */}
+              <button
+                onClick={() => setShowVideoModal(true)}
+                className="fixed bottom-4 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
+              >
+                🎥
+              </button>
+              
               {/* Floating Chat Button */}
               {!showChat && (
                 <button
                   onClick={() => setShowChat(true)}
-                  className="fixed bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-20"
+                  className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-20"
                 >
                   💬
                 </button>
               )}
               
-              {/* Floating Video (Mobile - Small Window) */}
-              <div className="fixed bottom-4 left-4 z-20 w-36 h-28 bg-gray-800 rounded-lg shadow-lg overflow-hidden border-2 border-blue-500">
-                <VideoCall 
-                  socket={socket} 
-                  userId={session.user.id} 
+              {/* Video Modal */}
+              {showVideoModal && (
+                <MobileVideoCall
+                  socket={socket}
+                  userId={session.user.id}
                   sessionId={id as string}
                   isMentor={isMentor}
+                  onClose={() => setShowVideoModal(false)}
                 />
-              </div>
+              )}
               
-              {/* Chat Panel (Mobile - Full Screen Overlay) */}
+              {/* Chat Panel */}
               {showChat && (
                 <div className="absolute inset-0 z-30 bg-gray-900 flex flex-col">
                   <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">

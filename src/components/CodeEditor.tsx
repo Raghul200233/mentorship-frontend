@@ -2,21 +2,21 @@ import { useEffect, useRef } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 
 const LANGUAGE_CONFIGS = {
-  javascript: { language: 'javascript', extension: 'js' },
-  python: { language: 'python', extension: 'py' },
-  c: { language: 'c', extension: 'c' },
-  cpp: { language: 'cpp', extension: 'cpp' },
-  java: { language: 'java', extension: 'java' },
-  html: { language: 'html', extension: 'html' },
-  css: { language: 'css', extension: 'css' },
-  typescript: { language: 'typescript', extension: 'ts' },
-  sql: { language: 'sql', extension: 'sql' },
-  go: { language: 'go', extension: 'go' },
-  rust: { language: 'rust', extension: 'rs' },
-  php: { language: 'php', extension: 'php' },
-  ruby: { language: 'ruby', extension: 'rb' },
-  swift: { language: 'swift', extension: 'swift' },
-  kotlin: { language: 'kotlin', extension: 'kt' },
+  javascript: { language: 'javascript', extension: 'js', name: 'JavaScript' },
+  python: { language: 'python', extension: 'py', name: 'Python' },
+  c: { language: 'c', extension: 'c', name: 'C' },
+  cpp: { language: 'cpp', extension: 'cpp', name: 'C++' },
+  java: { language: 'java', extension: 'java', name: 'Java' },
+  html: { language: 'html', extension: 'html', name: 'HTML' },
+  css: { language: 'css', extension: 'css', name: 'CSS' },
+  typescript: { language: 'typescript', extension: 'ts', name: 'TypeScript' },
+  sql: { language: 'sql', extension: 'sql', name: 'SQL' },
+  go: { language: 'go', extension: 'go', name: 'Go' },
+  rust: { language: 'rust', extension: 'rs', name: 'Rust' },
+  php: { language: 'php', extension: 'php', name: 'PHP' },
+  ruby: { language: 'ruby', extension: 'rb', name: 'Ruby' },
+  swift: { language: 'swift', extension: 'swift', name: 'Swift' },
+  kotlin: { language: 'kotlin', extension: 'kt', name: 'Kotlin' },
 }
 
 const DEFAULT_CODE: Record<string, string> = {
@@ -40,21 +40,11 @@ const DEFAULT_CODE: Record<string, string> = {
 export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
   const editorRef = useRef<any>(null)
   const isLocalChange = useRef(false)
-  const isMounted = useRef(true)
-
-  useEffect(() => {
-    isMounted.current = true
-    return () => {
-      isMounted.current = false
-    }
-  }, [])
 
   useEffect(() => {
     if (!socket) return
 
     const handleCodeUpdate = (data: { code: string, language: string }) => {
-      if (!isMounted.current) return
-      
       if (!isLocalChange.current && editorRef.current) {
         setCode(data.code)
         if (data.language && data.language !== language) {
@@ -77,7 +67,7 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
   }, [socket, setCode, language, setLanguage])
 
   const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined && isMounted.current) {
+    if (value !== undefined) {
       isLocalChange.current = true
       setCode(value)
       if (socket) {
@@ -94,8 +84,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
   }
 
   const handleLanguageChange = (newLanguage: string) => {
-    if (!isMounted.current) return
-    
     setLanguage(newLanguage)
     const newCode = DEFAULT_CODE[newLanguage] || DEFAULT_CODE.javascript
     setCode(newCode)
@@ -109,21 +97,22 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      <div className="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h3 className="text-white font-semibold">✏️ Collaborative Code Editor</h3>
+      <div className="bg-gray-800 p-3 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-white font-semibold text-sm sm:text-base">✏️ Collaborative Code Editor</h3>
           <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Real-time Sync</span>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="text-gray-300 text-sm">Language:</label>
+        <div className="flex items-center gap-2">
+          <label className="text-gray-300 text-xs sm:text-sm font-medium">Language:</label>
           <select
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
-            className="bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            className="bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium cursor-pointer"
+            style={{ minWidth: '120px' }}
           >
-            {Object.keys(LANGUAGE_CONFIGS).map((lang) => (
-              <option key={lang} value={lang}>
-                {lang.toUpperCase()}
+            {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
+              <option key={key} value={key}>
+                {config.name}
               </option>
             ))}
           </select>
@@ -145,6 +134,7 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             suggestOnTriggerCharacters: true,
             formatOnPaste: true,
             formatOnType: true,
+            readOnly: false,
           }}
         />
       </div>
