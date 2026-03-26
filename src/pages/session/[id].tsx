@@ -12,8 +12,8 @@ export default function SessionPage({ session }: any) {
   const { socket, isConnected } = useSocket(id as string, session?.user?.id)
   const [code, setCode] = useState('// Start coding here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n')
   const [language, setLanguage] = useState('javascript')
-  const [showInvite, setShowInvite] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [activeTab, setActiveTab] = useState<'code' | 'chat' | 'video'>('code')
 
   useEffect(() => {
     if (!session) {
@@ -43,13 +43,13 @@ export default function SessionPage({ session }: any) {
 
   return (
     <Layout session={session}>
-      {/* Invite Banner */}
+      {/* Invite Banner - Only for Mentor */}
       {isMentor && (
-        <div className="bg-blue-900/30 border-b border-blue-500/30 p-3">
+        <div className="bg-blue-900/30 border-b border-blue-500/30 p-3 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-blue-400 text-sm">🔗 Share this link with your student:</span>
-              <code className="bg-gray-800 px-3 py-1 rounded text-xs text-gray-300 break-all">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-blue-400 text-sm hidden sm:inline">🔗 Share:</span>
+              <code className="bg-gray-800 px-3 py-1 rounded text-xs text-gray-300 truncate flex-1">
                 {inviteLink}
               </code>
             </div>
@@ -63,9 +63,46 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
       
-      <div className="h-screen flex flex-col lg:flex-row">
-        {/* LEFT PANEL - Code Editor */}
-        <div className="lg:w-2/3 flex flex-col border-r border-gray-700">
+      {/* Mobile Tab Navigation */}
+      <div className="lg:hidden bg-gray-800 border-b border-gray-700 sticky top-0 z-10">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('code')}
+            className={`flex-1 py-3 text-sm font-medium transition ${
+              activeTab === 'code'
+                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            ✏️ Code Editor
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-3 text-sm font-medium transition ${
+              activeTab === 'chat'
+                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            💬 Chat
+          </button>
+          <button
+            onClick={() => setActiveTab('video')}
+            className={`flex-1 py-3 text-sm font-medium transition ${
+              activeTab === 'video'
+                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            🎥 Video
+          </button>
+        </div>
+      </div>
+      
+      {/* Desktop Layout - 3 columns */}
+      <div className="hidden lg:flex h-screen">
+        {/* Left Panel - Code Editor */}
+        <div className="w-2/3 flex flex-col border-r border-gray-700">
           <CodeEditor 
             socket={socket} 
             code={code} 
@@ -76,14 +113,11 @@ export default function SessionPage({ session }: any) {
           />
         </div>
         
-        {/* RIGHT PANEL - Chat and Video */}
-        <div className="lg:w-1/3 flex flex-col">
-          {/* Chat Section */}
+        {/* Right Panel - Chat and Video */}
+        <div className="w-1/3 flex flex-col">
           <div className="h-1/2 border-b border-gray-700">
             <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
           </div>
-          
-          {/* Video Section */}
           <div className="h-1/2">
             <VideoCall 
               socket={socket} 
@@ -95,9 +129,34 @@ export default function SessionPage({ session }: any) {
         </div>
       </div>
       
+      {/* Mobile Layout - Active Tab */}
+      <div className="lg:hidden h-[calc(100vh-8rem)]">
+        {activeTab === 'code' && (
+          <CodeEditor 
+            socket={socket} 
+            code={code} 
+            setCode={setCode} 
+            sessionId={id as string}
+            language={language}
+            setLanguage={setLanguage}
+          />
+        )}
+        {activeTab === 'chat' && (
+          <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+        )}
+        {activeTab === 'video' && (
+          <VideoCall 
+            socket={socket} 
+            userId={session.user.id} 
+            sessionId={id as string}
+            isMentor={isMentor}
+          />
+        )}
+      </div>
+      
       {/* Connection Status Indicator */}
       {!isConnected && (
-        <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm">
+        <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm z-50">
           Connecting to server...
         </div>
       )}

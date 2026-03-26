@@ -54,7 +54,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   }
 
   const handlePeerEndedCall = () => {
-    console.log('Peer ended the call')
     cleanupCall()
   }
 
@@ -96,7 +95,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         cleanupCall()
@@ -104,7 +102,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.onconnectionstatechange = () => {
-      console.log('Connection state:', pc.connectionState)
       if (pc.connectionState === 'connected') {
         setRemoteStreamActive(true)
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
@@ -272,16 +269,16 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      <div className="bg-gray-700 p-4 border-b border-gray-600">
-        <h3 className="text-white font-semibold">🎥 Video Call</h3>
-        <p className="text-gray-400 text-xs mt-1">
+      <div className="bg-gray-700 p-3 sm:p-4 border-b border-gray-600">
+        <h3 className="text-white font-semibold text-sm sm:text-base">🎥 Video Call</h3>
+        <p className="text-gray-400 text-xs mt-1 hidden sm:block">
           {isCallActive ? `Call in progress (${getConnectionStatus()})` : 'Click Start Call to begin'}
         </p>
       </div>
       
-      <div className="flex-1 p-4">
-        <div className="grid grid-cols-2 gap-4 h-full">
-          <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+      <div className="flex-1 p-2 sm:p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 h-full">
+          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
             <video
               ref={localVideoRef}
               autoPlay
@@ -295,7 +292,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
               {!isAudioEnabled && <span className="text-red-400">🎤 Off</span>}
             </div>
           </div>
-          <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -308,8 +305,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
             {!remoteStreamActive && isCallActive && connectionState !== 'connected' && (
               <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                 <div className="text-white text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                  <div className="text-sm">{getConnectionStatus()}</div>
+                  <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-white mx-auto mb-2"></div>
+                  <div className="text-xs sm:text-sm">{getConnectionStatus()}</div>
                 </div>
               </div>
             )}
@@ -317,11 +314,11 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
         </div>
       </div>
       
-      <div className="p-4 border-t border-gray-700 space-y-3">
+      <div className="p-3 sm:p-4 border-t border-gray-700 space-y-2 sm:space-y-3">
         {!isCallActive ? (
           <button
             onClick={startCall}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm sm:text-base"
           >
             Start Call
           </button>
@@ -330,28 +327,28 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
             <div className="flex gap-2">
               <button
                 onClick={toggleVideo}
-                className={`flex-1 py-2 rounded-lg transition ${
+                className={`flex-1 py-2 rounded-lg transition text-sm ${
                   isVideoEnabled 
                     ? 'bg-blue-600 hover:bg-blue-700' 
                     : 'bg-red-600 hover:bg-red-700'
                 } text-white`}
               >
-                {isVideoEnabled ? '🎥 Camera On' : '🎥 Camera Off'}
+                {isVideoEnabled ? '🎥 Camera' : '🎥 Off'}
               </button>
               <button
                 onClick={toggleAudio}
-                className={`flex-1 py-2 rounded-lg transition ${
+                className={`flex-1 py-2 rounded-lg transition text-sm ${
                   isAudioEnabled 
                     ? 'bg-blue-600 hover:bg-blue-700' 
                     : 'bg-red-600 hover:bg-red-700'
                 } text-white`}
               >
-                {isAudioEnabled ? '🎤 Mic On' : '🎤 Mic Off'}
+                {isAudioEnabled ? '🎤 Mic' : '🎤 Off'}
               </button>
             </div>
             <button
               onClick={endCall}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm sm:text-base"
             >
               End Call
             </button>
