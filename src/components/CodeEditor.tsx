@@ -146,8 +146,7 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             formatOnPaste: true,
             formatOnType: true,
             readOnly: false,
-            cursorBlinking: 'smooth',
-            cursorSmoothCaretAnimation: true,
+            cursorBlinking: 'smooth'
           }}
         />
       </div>
