@@ -89,7 +89,9 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' }
       ]
     })
 
@@ -103,19 +105,15 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
       }
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = null
-        }
-        setRemoteStreamActive(false)
-      }
     }
 
     pc.ontrack = (event) => {
+      console.log('Got remote stream')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -133,6 +131,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   const startCall = async () => {
     try {
+      console.log('Starting call...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
@@ -165,6 +164,8 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   const handleOffer = async ({ offer, fromUserId }: any) => {
     if (fromUserId === userId) return
+    
+    console.log('Received offer')
 
     try {
       if (!localStreamRef.current) {
@@ -241,70 +242,41 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      {/* Header */}
       <div className="bg-gray-900 p-4 flex justify-between items-center border-b border-gray-700">
         <h3 className="text-white font-semibold text-lg">🎥 Video Call</h3>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-white text-2xl"
-        >
-          ✕
-        </button>
+        <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">✕</button>
       </div>
       
-      {/* Video Container */}
       <div className="flex-1 p-4">
         {!isCallActive ? (
           <div className="h-full flex flex-col items-center justify-center">
-            <div className="text-center">
-              <div className="text-6xl mb-4">📞</div>
-              <p className="text-gray-400 mb-6">Start a video call to connect with your peer</p>
-              <button
-                onClick={startCall}
-                className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-semibold text-lg transition"
-              >
-                Start Call
-              </button>
-            </div>
+            <div className="text-6xl mb-4">📞</div>
+            <p className="text-gray-400 mb-6">Start a video call to connect with your peer</p>
+            <button
+              onClick={startCall}
+              className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-semibold text-lg"
+            >
+              Start Call
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4 h-full">
-            {/* Local Video */}
             <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
+              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Camera Off)'}
               </div>
-              {!isVideoEnabled && (
-                <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                  <span className="text-white text-sm">Camera is off</span>
-                </div>
-              )}
             </div>
-            
-            {/* Remote Video */}
             <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${remoteStreamActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : getConnectionStatusText()}
               </div>
-              {!remoteStreamActive && connectionState !== 'connected' && (
+              {!remoteStreamActive && (
                 <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-white text-sm">{getConnectionStatusText()}</p>
+                    <p className="text-white text-sm">Waiting for peer...</p>
                   </div>
                 </div>
               )}
@@ -313,40 +285,17 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
         )}
       </div>
       
-      {/* Controls */}
       {isCallActive && (
         <div className="bg-gray-900 p-6 border-t border-gray-700">
           <div className="flex justify-center gap-4">
-            <button
-              onClick={toggleVideo}
-              className={`p-4 rounded-full transition ${
-                isVideoEnabled 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-red-600 hover:bg-red-700'
-              } text-white`}
-            >
+            <button onClick={toggleVideo} className={`p-4 rounded-full ${isVideoEnabled ? 'bg-blue-600' : 'bg-red-600'} text-white`}>
               {isVideoEnabled ? '🎥' : '🚫'}
             </button>
-            <button
-              onClick={toggleAudio}
-              className={`p-4 rounded-full transition ${
-                isAudioEnabled 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-red-600 hover:bg-red-700'
-              } text-white`}
-            >
+            <button onClick={toggleAudio} className={`p-4 rounded-full ${isAudioEnabled ? 'bg-blue-600' : 'bg-red-600'} text-white`}>
               {isAudioEnabled ? '🎤' : '🔇'}
             </button>
-            <button
-              onClick={endCall}
-              className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
-            >
-              📞
-            </button>
+            <button onClick={endCall} className="p-4 rounded-full bg-red-600 text-white">📞</button>
           </div>
-          <p className="text-center text-gray-400 text-xs mt-4">
-            Tap buttons to control your camera and microphone
-          </p>
         </div>
       )}
     </div>
