@@ -97,3 +97,20 @@ body {
 .modal-enter {
   animation: slideUp 0.3s ease-out;
 }
+
+/* Improve video rendering */
+video {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000;
+}
+
+/* Better quality for video elements */
+video::-webkit-media-controls {
+  display: none !important;
+}
+
+/* Ensure smooth video playback */
+.video-container {
+  will-change: transform;
+}

@@ -85,11 +85,13 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' }
-      ]
+      ],
+      iceCandidatePoolSize: 10
     })
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('📡 Sending ICE candidate')
         socket.emit('webrtc-ice-candidate', {
           sessionId,
           candidate: event.candidate
@@ -98,7 +100,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', pc.iceConnectionState)
+      console.log('🔌 ICE connection state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
@@ -106,7 +108,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.ontrack = (event) => {
-      console.log('Received remote track')
+      console.log('📺 Received remote stream')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -124,14 +126,22 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
 
   const startCall = async () => {
     try {
-      console.log('Starting call...')
+      console.log('🎥 Starting call...')
+      
+      // Get high quality video constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        }, 
         audio: true 
       })
+      
       localStreamRef.current = stream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
+        localVideoRef.current.play().catch(e => console.log('Play error:', e))
       }
       setIsVideoEnabled(true)
       setIsAudioEnabled(true)
@@ -139,7 +149,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
       const pc = createPeerConnection()
       peerConnectionRef.current = pc
 
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveVideo: true,
+        offerToReceiveAudio: true
+      })
       await pc.setLocalDescription(offer)
       
       socket.emit('webrtc-offer', {
@@ -149,7 +162,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
 
       setIsCallActive(true)
       setConnectionState('connecting')
-      console.log('Call started, offer sent')
+      console.log('📞 Call started, offer sent')
     } catch (error) {
       console.error('Error starting call:', error)
       alert('Please allow camera and microphone access')
@@ -159,17 +172,22 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   const handleOffer = async ({ offer, fromUserId }: any) => {
     if (fromUserId === userId) return
     
-    console.log('Received offer from:', fromUserId)
+    console.log('📞 Received offer from:', fromUserId)
 
     try {
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          }, 
           audio: true 
         })
         localStreamRef.current = stream
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
+          localVideoRef.current.play().catch(e => console.log('Play error:', e))
         }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
@@ -190,7 +208,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
 
       setIsCallActive(true)
       setConnectionState('connecting')
-      console.log('Answer sent')
+      console.log('📞 Answer sent')
     } catch (error) {
       console.error('Error handling offer:', error)
     }
@@ -199,10 +217,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   const handleAnswer = async ({ answer }: any) => {
     if (!peerConnectionRef.current) return
     
-    console.log('Received answer')
+    console.log('📞 Received answer')
     try {
       await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
-      console.log('Remote description set')
+      console.log('✅ Remote description set')
     } catch (error) {
       console.error('Error handling answer:', error)
     }
@@ -214,7 +232,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     try {
       if (peerConnectionRef.current.remoteDescription) {
         await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-        console.log('ICE candidate added')
+        console.log('✅ ICE candidate added')
       }
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
@@ -222,7 +240,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   }
 
   const endCall = () => {
-    console.log('Ending call')
+    console.log('📞 Ending call')
     cleanupCall()
     socket.emit('end-call', { sessionId })
   }

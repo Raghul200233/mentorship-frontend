@@ -90,9 +90,9 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' }
-      ]
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10
     })
 
     pc.onicecandidate = (event) => {
@@ -105,7 +105,6 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
@@ -113,7 +112,6 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
 
     pc.ontrack = (event) => {
-      console.log('Got remote stream')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -131,9 +129,12 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   const startCall = async () => {
     try {
-      console.log('Starting call...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        }, 
         audio: true 
       })
       localStreamRef.current = stream
@@ -146,7 +147,10 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
       const pc = createPeerConnection()
       peerConnectionRef.current = pc
 
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveVideo: true,
+        offerToReceiveAudio: true
+      })
       await pc.setLocalDescription(offer)
       
       socket.emit('webrtc-offer', {
@@ -164,13 +168,15 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   const handleOffer = async ({ offer, fromUserId }: any) => {
     if (fromUserId === userId) return
-    
-    console.log('Received offer')
 
     try {
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          }, 
           audio: true 
         })
         localStreamRef.current = stream
@@ -260,15 +266,15 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 h-full">
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                You {!isVideoEnabled && '(Camera Off)'}
-              </div>
-            </div>
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+          <div className="grid grid-cols-1 gap-4 h-full">
+            {/* Remote Video - Full Size */}
+            <div className="relative bg-gray-900 rounded-lg overflow-hidden flex-1">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : getConnectionStatusText()}
               </div>
@@ -280,6 +286,20 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
                   </div>
                 </div>
               )}
+            </div>
+            
+            {/* Local Video - Small PiP */}
+            <div className="absolute bottom-20 right-4 w-32 h-24 bg-gray-900 rounded-lg overflow-hidden border-2 border-blue-500 shadow-lg">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-1 left-1 bg-black bg-opacity-60 text-white text-[10px] px-1 py-0.5 rounded">
+                You {!isVideoEnabled && '(Off)'}
+              </div>
             </div>
           </div>
         )}
