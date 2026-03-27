@@ -63,12 +63,6 @@ export default function Dashboard({ session }: any) {
       }
       
       const data = await response.json()
-      
-      const userRole = session.user.user_metadata?.role || 'mentor'
-      if (userRole === 'mentor') {
-        alert(`✅ Session created successfully!\n\nShare this link with your student:\n${data.inviteLink}`)
-      }
-      
       router.push(`/session/${data.id}`)
     } catch (error: any) {
       console.error('Error creating session:', error)
@@ -98,7 +92,6 @@ export default function Dashboard({ session }: any) {
         throw new Error(errorData.error || 'Failed to delete session')
       }
       
-      // Remove session from list
       setSessions(sessions.filter((s: any) => s.id !== sessionId))
       alert('Session deleted successfully')
     } catch (error: any) {
@@ -164,19 +157,9 @@ export default function Dashboard({ session }: any) {
                 <button
                   onClick={createSession}
                   disabled={creating}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50"
                 >
-                  {creating ? (
-                    <span className="flex items-center justify-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Creating...
-                    </span>
-                  ) : (
-                    'Create New Session'
-                  )}
+                  {creating ? 'Creating...' : 'Create New Session'}
                 </button>
               </div>
             )}
@@ -217,23 +200,18 @@ export default function Dashboard({ session }: any) {
                   const isDeleting = deleting === session.id
                   
                   return (
-                    <div key={session.id} className="bg-gray-700 rounded-lg p-4 hover:bg-gray-650 transition">
+                    <div key={session.id} className="bg-gray-700 rounded-lg p-4">
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div className="flex-1">
                           <p className="text-white font-mono text-sm mb-1">
                             Session ID: <span className="text-blue-400">{session.id.substring(0, 8)}...</span>
                           </p>
                           <p className="text-gray-400 text-xs">
-                            Status: <span className={`${session.status === 'active' ? 'text-green-400' : 'text-yellow-400'}`}>
+                            Status: <span className={session.status === 'active' ? 'text-green-400' : 'text-yellow-400'}>
                               {session.status === 'active' ? '🟢 Active' : '🟡 Waiting for student'}
                             </span>
-                            {' '}| Created: {new Date(session.created_at).toLocaleString()}
+                            {' | Created: '}{new Date(session.created_at).toLocaleString()}
                           </p>
-                          {session.student_id && (
-                            <p className="text-gray-400 text-xs mt-1">
-                              👤 Student joined: {new Date(session.updated_at).toLocaleString()}
-                            </p>
-                          )}
                           <div className="mt-2 flex items-center gap-2">
                             <input
                               type="text"
@@ -253,7 +231,7 @@ export default function Dashboard({ session }: any) {
                         <div className="flex gap-2">
                           <button
                             onClick={() => router.push(`/session/${session.id}`)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm whitespace-nowrap"
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"
                           >
                             Join Session
                           </button>
@@ -261,7 +239,7 @@ export default function Dashboard({ session }: any) {
                             <button
                               onClick={() => deleteSession(session.id)}
                               disabled={isDeleting}
-                              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition text-sm whitespace-nowrap disabled:opacity-50"
+                              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition text-sm disabled:opacity-50"
                             >
                               {isDeleting ? 'Deleting...' : '🗑️ Delete'}
                             </button>
@@ -272,16 +250,6 @@ export default function Dashboard({ session }: any) {
                   )
                 })}
               </div>
-            </div>
-          )}
-          
-          {sessions.length === 0 && !loading && (
-            <div className="mt-8 text-center py-12 bg-gray-700 rounded-lg">
-              <div className="text-6xl mb-4">🚀</div>
-              <h3 className="text-xl text-white mb-2">No sessions yet</h3>
-              <p className="text-gray-400">
-                {isMentor ? 'Create your first session to get started!' : 'Ask your mentor to share a session link with you'}
-              </p>
             </div>
           )}
         </div>

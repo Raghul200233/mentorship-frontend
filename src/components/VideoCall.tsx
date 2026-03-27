@@ -13,23 +13,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
-  // Check if media devices are available
-  const checkMediaDevices = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const hasCamera = devices.some(device => device.kind === 'videoinput')
-      const hasMic = devices.some(device => device.kind === 'audioinput')
-      
-      if (!hasCamera) console.log('No camera found')
-      if (!hasMic) console.log('No microphone found')
-      
-      return { hasCamera, hasMic }
-    } catch (err) {
-      console.error('Error enumerating devices:', err)
-      return { hasCamera: false, hasMic: false }
-    }
-  }
-
   useEffect(() => {
     if (!socket) return
 
@@ -43,22 +26,17 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
       socket.off('webrtc-answer')
       socket.off('webrtc-ice-candidate')
       socket.off('peer-ended-call')
-      cleanupCall()
+      // Don't cleanup on unmount - let the call continue
     }
   }, [socket])
 
   const cleanupCall = () => {
+    console.log('🧹 Cleaning up call...')
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
     }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        track.stop()
-        console.log('Stopped track:', track.kind)
-      })
-      localStreamRef.current = null
-    }
+    // Don't stop tracks here - they'll be stopped when call ends
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null
     }
@@ -140,7 +118,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.ontrack = (event) => {
-      console.log('📺 Received remote stream', event.streams[0].getTracks())
+      console.log('📺 Received remote stream', event.streams[0].getTracks().map(t => t.kind))
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -162,9 +140,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     try {
       setError('')
       console.log('🎥 Starting call...')
-      
-      // Check media devices first
-      await checkMediaDevices()
       
       // Get user media with constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -299,6 +274,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
       if (peerConnectionRef.current.remoteDescription) {
         await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
         console.log('✅ ICE candidate added')
+      } else {
+        console.log('Waiting for remote description to add ICE candidate')
       }
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
@@ -307,7 +284,34 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
 
   const endCall = () => {
     console.log('📞 Ending call')
-    cleanupCall()
+    
+    // Stop all tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop()
+        console.log('Stopped track:', track.kind)
+      })
+      localStreamRef.current = null
+    }
+    
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
+    }
+    
+    // Clear video elements
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
+    
+    setIsCallActive(false)
+    setRemoteStreamActive(false)
+    setConnectionState('closed')
+    
     socket.emit('end-call', { sessionId })
   }
 
