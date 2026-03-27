@@ -146,7 +146,7 @@ export default function SessionPage({ session }: any) {
         {/* Connection Status */}
         {!isConnected && (
           <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
-            Connecting...
+            Connecting to server...
           </div>
         )}
       </div>

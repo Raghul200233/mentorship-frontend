@@ -13,12 +13,12 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [showControls, setShowControls] = useState(false)
+  const [connectionState, setConnectionState] = useState('new')
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
 
   useEffect(() => {
     if (!socket) return
@@ -54,14 +54,16 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
     }
     setIsCallActive(false)
     setRemoteStreamActive(false)
-    pendingCandidatesRef.current = []
+    setConnectionState('closed')
   }
 
   const handlePeerEndedCall = () => {
+    console.log('Peer ended call')
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null
     }
     setRemoteStreamActive(false)
+    setConnectionState('disconnected')
   }
 
   const toggleVideo = () => {
@@ -70,6 +72,7 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled
         setIsVideoEnabled(!isVideoEnabled)
+        console.log('Video toggled:', !isVideoEnabled)
       }
     }
   }
@@ -80,6 +83,7 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
       if (audioTrack) {
         audioTrack.enabled = !isAudioEnabled
         setIsAudioEnabled(!isAudioEnabled)
+        console.log('Audio toggled:', !isAudioEnabled)
       }
     }
   }
@@ -88,12 +92,14 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
       ]
     })
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('ICE candidate sent')
         socket.emit('webrtc-ice-candidate', {
           sessionId,
           candidate: event.candidate
@@ -102,6 +108,11 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
     }
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState)
+      setConnectionState(pc.iceConnectionState)
+      if (pc.iceConnectionState === 'connected') {
+        setRemoteStreamActive(true)
+      }
       if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null
@@ -110,13 +121,8 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
       }
     }
 
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') {
-        setRemoteStreamActive(true)
-      }
-    }
-
     pc.ontrack = (event) => {
+      console.log('Received remote stream')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -134,6 +140,7 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
 
   const startCall = async () => {
     try {
+      console.log('Starting call...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
@@ -157,6 +164,8 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
       })
 
       setIsCallActive(true)
+      setConnectionState('connecting')
+      console.log('Call started, offer sent')
     } catch (error) {
       console.error('Error starting call:', error)
       alert('Please allow camera and microphone access')
@@ -165,6 +174,8 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
 
   const handleOffer = async ({ offer, fromUserId }: any) => {
     if (fromUserId === userId) return
+    
+    console.log('Received offer from:', fromUserId)
 
     try {
       if (!localStreamRef.current) {
@@ -193,18 +204,9 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
         answer: pc.localDescription
       })
 
-      while (pendingCandidatesRef.current.length) {
-        const candidate = pendingCandidatesRef.current.shift()
-        if (candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch (e) {
-            console.error('Error adding pending candidate:', e)
-          }
-        }
-      }
-
       setIsCallActive(true)
+      setConnectionState('connecting')
+      console.log('Answer sent')
     } catch (error) {
       console.error('Error handling offer:', error)
     }
@@ -213,35 +215,22 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
   const handleAnswer = async ({ answer }: any) => {
     if (!peerConnectionRef.current) return
     
+    console.log('Received answer')
     try {
       await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
-      
-      while (pendingCandidatesRef.current.length) {
-        const candidate = pendingCandidatesRef.current.shift()
-        if (candidate) {
-          try {
-            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch (e) {
-            console.error('Error adding pending candidate after answer:', e)
-          }
-        }
-      }
+      console.log('Remote description set')
     } catch (error) {
       console.error('Error handling answer:', error)
     }
   }
 
   const handleIceCandidate = async ({ candidate }: any) => {
-    if (!peerConnectionRef.current) {
-      pendingCandidatesRef.current.push(candidate)
-      return
-    }
+    if (!peerConnectionRef.current) return
 
     try {
       if (peerConnectionRef.current.remoteDescription) {
         await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-      } else {
-        pendingCandidatesRef.current.push(candidate)
+        console.log('ICE candidate added')
       }
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
@@ -249,8 +238,20 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
   }
 
   const endCall = () => {
+    console.log('Ending call')
     cleanupCall()
     socket.emit('end-call', { sessionId })
+  }
+
+  const getConnectionStatusText = () => {
+    switch (connectionState) {
+      case 'new': return 'Not connected'
+      case 'connecting': return 'Connecting...'
+      case 'connected': return 'Connected'
+      case 'disconnected': return 'Disconnected'
+      case 'failed': return 'Connection failed'
+      default: return 'Unknown'
+    }
   }
 
   return (
@@ -289,22 +290,18 @@ export function MobileFloatingVideo({ socket, userId, sessionId, isMentor }: Mob
                   playsInline
                   className="w-full h-full object-cover"
                 />
+                {!isVideoEnabled && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <span className="text-white text-xs">Camera Off</span>
+                  </div>
+                )}
               </div>
               
               {/* Status Badge */}
-              {!remoteStreamActive && (
-                <div className="absolute top-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                  Connecting...
-                </div>
-              )}
-              
-              {/* Connected Status */}
-              {remoteStreamActive && (
-                <div className="absolute top-2 left-2 bg-green-600 bg-opacity-80 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></span>
-                  Connected
-                </div>
-              )}
+              <div className="absolute top-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${remoteStreamActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+                {getConnectionStatusText()}
+              </div>
             </div>
             
             {/* Controls Overlay - Shows on Tap */}
