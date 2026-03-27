@@ -14,6 +14,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [connectionState, setConnectionState] = useState('new')
+  const [error, setError] = useState('')
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -55,6 +56,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     setIsCallActive(false)
     setRemoteStreamActive(false)
     setConnectionState('closed')
+    setError('')
   }
 
   const handlePeerEndedCall = () => {
@@ -108,6 +110,8 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
+      } else if (pc.iceConnectionState === 'failed') {
+        setError('Connection failed')
       }
     }
 
@@ -129,13 +133,16 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
   const startCall = async () => {
     try {
+      setError('')
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+        video: {
           width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
-        }, 
-        audio: true 
+          height: { ideal: 720 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        }
       })
       localStreamRef.current = stream
       if (localVideoRef.current) {
@@ -160,9 +167,9 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
 
       setIsCallActive(true)
       setConnectionState('connecting')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting call:', error)
-      alert('Please allow camera and microphone access')
+      setError('Please allow camera and microphone access')
     }
   }
 
@@ -172,12 +179,14 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     try {
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+          video: {
             width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 }
-          }, 
-          audio: true 
+            height: { ideal: 720 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true
+          }
         })
         localStreamRef.current = stream
         if (localVideoRef.current) {
@@ -254,6 +263,12 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
       </div>
       
       <div className="flex-1 p-4">
+        {error && (
+          <div className="mb-3 p-2 bg-red-900/50 border border-red-500 rounded text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+        
         {!isCallActive ? (
           <div className="h-full flex flex-col items-center justify-center">
             <div className="text-6xl mb-4">📞</div>
@@ -266,9 +281,9 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 h-full">
-            {/* Remote Video - Full Size */}
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden flex-1">
+          <div className="relative h-full">
+            {/* Remote Video - Full Screen */}
+            <div className="absolute inset-0 bg-gray-900 rounded-lg overflow-hidden">
               <video
                 ref={remoteVideoRef}
                 autoPlay
@@ -282,7 +297,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
                 <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-white text-sm">Waiting for peer...</p>
+                    <p className="text-white text-sm">{getConnectionStatusText()}</p>
                   </div>
                 </div>
               )}
