@@ -16,7 +16,6 @@ export function Chat({ socket, userId, sessionId }: any) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Fetch user profile to get name
     const fetchUserName = async () => {
       const { data } = await supabase
         .from('profiles')
@@ -35,7 +34,6 @@ export function Chat({ socket, userId, sessionId }: any) {
   useEffect(() => {
     if (!socket) return
 
-    // Listen for incoming messages
     const handleMessage = (message: Message) => {
       console.log('📨 Received message:', message)
       setMessages(prev => [...prev, message])
@@ -64,8 +62,6 @@ export function Chat({ socket, userId, sessionId }: any) {
     }
 
     console.log('📤 Sending message:', message)
-    
-    // Emit to server which will broadcast to all in session
     socket.emit('chat-message', { sessionId, message })
     setInputText('')
   }

@@ -1,7 +1,7 @@
 import { Layout } from '@/components/Layout'
 import { Chat } from '@/components/Chat'
 import { VideoCall } from '@/components/VideoCall'
-import { MobileVideoCall } from '@/components/MobileVideoCall'
+import { MobileFloatingVideo } from '@/components/MobileFloatingVideo'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useSocket } from '@/hooks/useSocket'
 import { useRouter } from 'next/router'
@@ -15,7 +15,6 @@ export default function SessionPage({ session }: any) {
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
   const [showChat, setShowChat] = useState(false)
-  const [showVideoModal, setShowVideoModal] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -87,7 +86,7 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Desktop Layout - Sidebar with lower z-index */}
+          {/* Desktop Layout - Video and Chat Sidebar */}
           {!isMobile && (
             <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10 pointer-events-auto">
               <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
@@ -104,37 +103,24 @@ export default function SessionPage({ session }: any) {
             </div>
           )}
           
-          {/* Mobile Layout */}
+          {/* Mobile Layout - Floating Video + Chat Button */}
           {isMobile && (
             <>
-              {/* Floating Video Button */}
+              {/* Floating Video (Mobile Only) */}
+              <MobileFloatingVideo
+                socket={socket}
+                userId={session.user.id}
+                sessionId={id as string}
+                isMentor={isMentor}
+              />
+              
+              {/* Chat Button */}
               <button
-                onClick={() => setShowVideoModal(true)}
-                className="fixed bottom-4 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg z-30"
+                onClick={() => setShowChat(true)}
+                className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-30"
               >
-                🎥
+                💬
               </button>
-              
-              {/* Floating Chat Button */}
-              {!showChat && (
-                <button
-                  onClick={() => setShowChat(true)}
-                  className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-30"
-                >
-                  💬
-                </button>
-              )}
-              
-              {/* Video Modal */}
-              {showVideoModal && (
-                <MobileVideoCall
-                  socket={socket}
-                  userId={session.user.id}
-                  sessionId={id as string}
-                  isMentor={isMentor}
-                  onClose={() => setShowVideoModal(false)}
-                />
-              )}
               
               {/* Chat Panel - Full Screen Overlay */}
               {showChat && (

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 
 const LANGUAGE_CONFIGS = {
@@ -40,20 +40,26 @@ const DEFAULT_CODE: Record<string, string> = {
 export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
   const editorRef = useRef<any>(null)
   const isLocalChange = useRef(false)
+  const timeoutRef = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
     if (!socket) return
 
     const handleCodeUpdate = (data: { code: string, language: string }) => {
       if (!isLocalChange.current && editorRef.current) {
+        const editor = editorRef.current
+        const currentPosition = editor.getPosition()
+        
         setCode(data.code)
         if (data.language && data.language !== language) {
           setLanguage(data.language)
-          if (editorRef.current) {
-            editorRef.current.setValue(data.code)
-          }
-        } else if (editorRef.current) {
-          editorRef.current.setValue(data.code)
+        }
+        
+        editor.setValue(data.code)
+        
+        // Restore cursor position
+        if (currentPosition) {
+          editor.setPosition(currentPosition)
         }
       }
       isLocalChange.current = false
@@ -63,18 +69,23 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
 
     return () => {
       socket.off('code-update', handleCodeUpdate)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
   }, [socket, setCode, language, setLanguage])
 
-  const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined) {
+  const handleEditorChange = useCallback((value: string | undefined) => {
+    if (value !== undefined && editorRef.current) {
       isLocalChange.current = true
       setCode(value)
-      if (socket) {
-        socket.emit('code-update', { sessionId, code: value, language })
-      }
+      
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => {
+        if (socket) {
+          socket.emit('code-update', { sessionId, code: value, language })
+        }
+      }, 100)
     }
-  }
+  }, [socket, sessionId, language, setCode])
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor
@@ -97,7 +108,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      {/* Header with Language Selector - Higher z-index */}
       <div className="bg-gray-800 p-3 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2 sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <h3 className="text-white font-semibold text-sm sm:text-base">✏️ Collaborative Code Editor</h3>
@@ -136,6 +146,8 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             formatOnPaste: true,
             formatOnType: true,
             readOnly: false,
+            cursorBlinking: 'smooth',
+            cursorSmoothCaretAnimation: true,
           }}
         />
       </div>
