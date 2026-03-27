@@ -62,3 +62,38 @@ body {
   z-index: 50;
 }
 
+/* Mobile buttons container */
+.mobile-buttons-container {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.mobile-buttons-container button {
+  pointer-events: auto;
+}
+
+/* Ensure code editor is not blocked */
+.code-editor-container {
+  pointer-events: auto;
+}
+
+/* Modal animations */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.modal-enter {
+  animation: slideUp 0.3s ease-out;
+}

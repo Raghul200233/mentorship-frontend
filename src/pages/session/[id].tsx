@@ -1,7 +1,7 @@
 import { Layout } from '@/components/Layout'
 import { Chat } from '@/components/Chat'
 import { VideoCall } from '@/components/VideoCall'
-import { MobileFloatingVideo } from '@/components/MobileFloatingVideo'
+import { MobileVideoModal } from '@/components/MobileViewModal'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useSocket } from '@/hooks/useSocket'
 import { useRouter } from 'next/router'
@@ -15,6 +15,7 @@ export default function SessionPage({ session }: any) {
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showVideo, setShowVideo] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -103,43 +104,53 @@ export default function SessionPage({ session }: any) {
             </div>
           )}
           
-          {/* Mobile Layout - Floating Video + Chat Button */}
+          {/* Mobile Layout - Bottom Buttons */}
           {isMobile && (
-            <>
-              {/* Floating Video (Mobile Only) */}
-              <MobileFloatingVideo
-                socket={socket}
-                userId={session.user.id}
-                sessionId={id as string}
-                isMentor={isMentor}
-              />
-              
-              {/* Chat Button */}
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-20">
+              <button
+                onClick={() => setShowVideo(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full shadow-lg transition flex items-center gap-2"
+              >
+                <span className="text-xl">🎥</span>
+                <span className="font-semibold">Video Call</span>
+              </button>
               <button
                 onClick={() => setShowChat(true)}
-                className="fixed bottom-4 right-4 bg-green-600 text-white p-3 rounded-full shadow-lg z-30"
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition flex items-center gap-2"
               >
-                💬
+                <span className="text-xl">💬</span>
+                <span className="font-semibold">Chat</span>
               </button>
-              
-              {/* Chat Panel - Full Screen Overlay */}
-              {showChat && (
-                <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
-                  <div className="bg-gray-800 p-3 flex justify-between items-center border-b border-gray-700">
-                    <h3 className="text-white font-semibold">Chat</h3>
-                    <button
-                      onClick={() => setShowChat(false)}
-                      className="text-gray-400 hover:text-white text-xl"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="flex-1">
-                    <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
+          )}
+          
+          {/* Mobile Video Modal */}
+          {isMobile && showVideo && (
+            <MobileVideoModal
+              socket={socket}
+              userId={session.user.id}
+              sessionId={id as string}
+              isMentor={isMentor}
+              onClose={() => setShowVideo(false)}
+            />
+          )}
+          
+          {/* Mobile Chat Modal */}
+          {isMobile && showChat && (
+            <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
+              <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
+                <h3 className="text-white font-semibold text-lg">💬 Chat</h3>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1">
+                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+              </div>
+            </div>
           )}
         </div>
         
