@@ -140,7 +140,8 @@ export default function SessionPage({ session }: any) {
                 <h3 className="text-white font-semibold text-lg">Chat</h3>
                 <button
                   onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-2xl font-bold"
+                  className="text-gray-400 hover:text-white text-2xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700 transition"
+                  style={{ fontSize: '24px' }}
                 >
                   ✕
                 </button>

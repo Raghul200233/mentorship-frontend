@@ -8,7 +8,15 @@ interface Message {
   timestamp: Date
 }
 
-export function Chat({ socket, userId, sessionId }: any) {
+interface ChatProps {
+  socket: any;
+  userId: string;
+  sessionId: string;
+  onClose?: () => void;
+  isModal?: boolean;
+}
+
+export function Chat({ socket, userId, sessionId, onClose, isModal }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [userName, setUserName] = useState('User')
@@ -59,8 +67,17 @@ export function Chat({ socket, userId, sessionId }: any) {
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      <div className="bg-gray-700 p-3 border-b border-gray-600">
+      {/* Header with close button if modal */}
+      <div className="bg-gray-700 p-3 border-b border-gray-600 flex justify-between items-center">
         <h3 className="text-white font-semibold text-sm">💬 Chat</h3>
+        {isModal && onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-600"
+          >
+            ✕
+          </button>
+        )}
       </div>
       
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
