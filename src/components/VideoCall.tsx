@@ -14,19 +14,50 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [connectionState, setConnectionState] = useState<string>('new')
   const [error, setError] = useState<string>('')
-  const [localVideoLoaded, setLocalVideoLoaded] = useState(false)
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
+  // Cleanup function
+  const cleanupCall = () => {
+    console.log('Cleaning up call...')
+    
+    // Stop all local tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop()
+        console.log('Stopped track:', track.kind)
+      })
+      localStreamRef.current = null
+    }
+    
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
+    }
+    
+    // Clear video elements
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
+    
+    setIsCallActive(false)
+    setRemoteStreamActive(false)
+    setConnectionState('closed')
+  }
+
   useEffect(() => {
     if (!socket) return
 
     const handleOffer = (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
       if (data.fromUserId === userId) return
-      handleOfferInternal(data.offer, data.fromUserId)
+      handleOfferInternal(data.offer)
     }
 
     const handleAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
@@ -38,9 +69,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     const handlePeerEndedCall = () => {
-      setRemoteStreamActive(false)
-      setConnectionState('disconnected')
-      setError('The other user ended the call')
+      console.log('Peer ended call')
+      cleanupCall()
     }
 
     socket.on('webrtc-offer', handleOffer)
@@ -53,6 +83,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.off('webrtc-answer', handleAnswer)
       socket.off('webrtc-ice-candidate', handleIceCandidate)
       socket.off('peer-ended-call', handlePeerEndedCall)
+      cleanupCall()
     }
   }, [socket, userId])
 
@@ -62,6 +93,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled
         setIsVideoEnabled(!isVideoEnabled)
+        console.log('Video toggled:', !isVideoEnabled)
       }
     }
   }
@@ -72,6 +104,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (audioTrack) {
         audioTrack.enabled = !isAudioEnabled
         setIsAudioEnabled(!isAudioEnabled)
+        console.log('Audio toggled:', !isAudioEnabled)
       }
     }
   }
@@ -81,10 +114,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 10
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
     }
 
     const pc = new RTCPeerConnection(configuration)
@@ -99,14 +130,15 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
-        setError('')
       }
     }
 
     pc.ontrack = (event) => {
+      console.log('Received remote track')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -125,20 +157,18 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const startCall = async () => {
     try {
       setError('')
+      console.log('Starting call...')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true,
-        audio: true
+        video: true, 
+        audio: true 
       })
       
       localStreamRef.current = stream
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.onloadedmetadata = () => {
-          setLocalVideoLoaded(true)
-          localVideoRef.current?.play()
-        }
+        localVideoRef.current.play()
       }
       
       setIsVideoEnabled(true)
@@ -157,28 +187,26 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       setIsCallActive(true)
       setConnectionState('connecting')
+      console.log('Call started')
     } catch (error: any) {
-      console.error('Error starting call:', error)
+      console.error('Error:', error)
       setError('Please allow camera and microphone access')
     }
   }
 
-  const handleOfferInternal = async (offer: RTCSessionDescriptionInit, fromUserId: string) => {
-    if (fromUserId === userId) return
-
+  const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
+      console.log('Handling offer')
+      
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true,
-          audio: true
+          video: true, 
+          audio: true 
         })
         localStreamRef.current = stream
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
-          localVideoRef.current.onloadedmetadata = () => {
-            setLocalVideoLoaded(true)
-            localVideoRef.current?.play()
-          }
+          localVideoRef.current.play()
         }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
@@ -199,6 +227,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       setIsCallActive(true)
       setConnectionState('connecting')
+      console.log('Answer sent')
     } catch (error) {
       console.error('Error handling offer:', error)
     }
@@ -209,8 +238,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     
     try {
       await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
+      console.log('Remote description set')
     } catch (error) {
-      console.error('Error handling answer:', error)
+      console.error('Error:', error)
     }
   }
 
@@ -218,33 +248,15 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     if (!peerConnectionRef.current) return
 
     try {
-      if (peerConnectionRef.current.remoteDescription) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-      }
+      await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
     }
   }
 
   const endCall = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
-      localStreamRef.current = null
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
-    }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null
-    }
-    setIsCallActive(false)
-    setRemoteStreamActive(false)
-    setConnectionState('closed')
-    setLocalVideoLoaded(false)
+    console.log('Ending call')
+    cleanupCall()
     socket.emit('end-call', { sessionId })
   }
 
@@ -277,18 +289,15 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         
         {!isCallActive ? (
           <div className="h-full flex flex-col items-center justify-center">
-            <div className="text-center">
-              <div className="text-6xl mb-4">📞</div>
-              <button
-                onClick={startCall}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-semibold transition"
-              >
-                Start Call
-              </button>
-              <p className="text-gray-400 text-xs mt-4">
-                Allow camera and microphone access
-              </p>
-            </div>
+            <button
+              onClick={startCall}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-semibold"
+            >
+              Start Call
+            </button>
+            <p className="text-gray-400 text-xs mt-4">
+              Allow camera and microphone access
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 h-full min-h-[200px]">
@@ -302,8 +311,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 className="w-full h-full object-cover"
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                {localVideoLoaded ? 'You' : 'Starting...'}
-                {!isVideoEnabled && ' (Camera Off)'}
+                You {!isVideoEnabled && '(Camera Off)'}
               </div>
             </div>
             
@@ -315,16 +323,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 playsInline
                 className="w-full h-full object-cover"
               />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${remoteStreamActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : getConnectionStatusText()}
               </div>
-              {!remoteStreamActive && connectionState !== 'connected' && (
+              {!remoteStreamActive && (
                 <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-white text-sm">{getConnectionStatusText()}</p>
-                  </div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
                 </div>
               )}
             </div>
@@ -332,35 +336,31 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         )}
       </div>
       
-      {/* Controls - Always visible at bottom */}
+      {/* Controls - Always at bottom */}
       {isCallActive && (
         <div className="p-3 border-t border-gray-700 bg-gray-800">
           <div className="flex justify-center gap-3">
             <button
               onClick={toggleVideo}
-              className={`px-4 py-2 rounded-lg transition ${
-                isVideoEnabled 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-red-600 hover:bg-red-700'
+              className={`px-4 py-2 rounded-lg ${
+                isVideoEnabled ? 'bg-blue-600' : 'bg-red-600'
               } text-white text-sm`}
             >
-              {isVideoEnabled ? '🎥 Camera' : '🎥 Off'}
+              {isVideoEnabled ? 'Camera' : 'Camera Off'}
             </button>
             <button
               onClick={toggleAudio}
-              className={`px-4 py-2 rounded-lg transition ${
-                isAudioEnabled 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-red-600 hover:bg-red-700'
+              className={`px-4 py-2 rounded-lg ${
+                isAudioEnabled ? 'bg-blue-600' : 'bg-red-600'
               } text-white text-sm`}
             >
-              {isAudioEnabled ? '🎤 Mic' : '🎤 Off'}
+              {isAudioEnabled ? 'Mic' : 'Mic Off'}
             </button>
             <button
               onClick={endCall}
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition text-sm"
+              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm"
             >
-              📞 End Call
+              End Call
             </button>
           </div>
         </div>

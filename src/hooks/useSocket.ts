@@ -1,33 +1,39 @@
-import { useEffect, useState } from 'react'
-import io from 'socket.io-client'
+import { useEffect, useState } from 'react';
+import io, { Socket } from 'socket.io-client';
 
-export function useSocket(sessionId: string, userId: string) {
-  const [socket, setSocket] = useState<any>(null)
-  const [isConnected, setIsConnected] = useState(false)
+export const useSocket = (sessionId: string, userId: string) => {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!sessionId || !userId) return
+    if (!sessionId || !userId) return;
 
-    const socketInstance = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001', {
-      query: { sessionId, userId }
-    })
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    
+    const newSocket = io(backendUrl, {
+      query: { sessionId, userId },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
 
-    socketInstance.on('connect', () => {
-      setIsConnected(true)
-      console.log('Socket connected')
-    })
+    newSocket.on('connect', () => {
+      console.log('Socket connected');
+      setIsConnected(true);
+    });
 
-    socketInstance.on('disconnect', () => {
-      setIsConnected(false)
-      console.log('Socket disconnected')
-    })
+    newSocket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      setIsConnected(false);
+    });
 
-    setSocket(socketInstance)
+    setSocket(newSocket);
 
     return () => {
-      socketInstance.disconnect()
-    }
-  }, [sessionId, userId])
+      newSocket.disconnect();
+    };
+  }, [sessionId, userId]);
 
-  return { socket, isConnected }
-}
+  return { socket, isConnected };
+};
