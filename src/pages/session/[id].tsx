@@ -1,7 +1,6 @@
 import { Layout } from '@/components/Layout'
 import { Chat } from '@/components/Chat'
 import { VideoCall } from '@/components/VideoCall'
-import { MobileVideoModal } from '@/components/MobileViewModal'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useSocket } from '@/hooks/useSocket'
 import { useRouter } from 'next/router'
@@ -14,19 +13,12 @@ export default function SessionPage({ session }: any) {
   const [code, setCode] = useState('// Start coding here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n')
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
-  const [showChat, setShowChat] = useState(true) // Default to true on desktop
-  const [showVideoModal, setShowVideoModal] = useState(false)
+  const [showChat, setShowChat] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
-      // On mobile, chat starts hidden
-      if (window.innerWidth < 768) {
-        setShowChat(false)
-      } else {
-        setShowChat(true)
-      }
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
@@ -61,28 +53,11 @@ export default function SessionPage({ session }: any) {
 
   return (
     <Layout session={session}>
-      <div className="h-screen flex flex-col overflow-hidden">
-        {/* Invite Banner */}
-        {isMentor && (
-          <div className="bg-blue-900/30 border-b border-blue-500/30 p-2 flex-shrink-0 z-10">
-            <div className="flex items-center justify-between gap-2">
-              <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
-                {inviteLink}
-              </code>
-              <button
-                onClick={copyInviteLink}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs transition whitespace-nowrap"
-              >
-                {copied ? '✓' : '📋'}
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Main Content */}
-        <div className="flex-1 relative overflow-hidden">
-          {/* Code Editor - Full Screen */}
-          <div className="absolute inset-0">
+      {/* Desktop View - No Changes */}
+      {!isMobile && (
+        <div className="h-screen flex overflow-hidden">
+          {/* Left - Code Editor */}
+          <div className="w-2/3 border-r border-gray-700">
             <CodeEditor 
               socket={socket} 
               code={code} 
@@ -93,85 +68,97 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Desktop Layout - Right Sidebar */}
-          {!isMobile && (
-            <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10 pointer-events-auto">
-              {/* Chat Window */}
-              <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+          {/* Right - Chat and Video */}
+          <div className="w-1/3 flex flex-col">
+            <div className="h-1/2 border-b border-gray-700">
+              <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+            </div>
+            <div className="h-1/2">
+              <VideoCall 
+                socket={socket} 
+                userId={session.user.id} 
+                sessionId={id as string}
+                isMentor={isMentor}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile View - Like Zoom Layout */}
+      {isMobile && (
+        <div className="h-screen flex flex-col bg-gray-900">
+          {/* Top - Copy Link Bar */}
+          {isMentor && (
+            <div className="bg-blue-900/50 p-3 flex justify-between items-center border-b border-gray-700">
+              <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
+                {inviteLink}
+              </code>
+              <button
+                onClick={copyInviteLink}
+                className="bg-blue-600 text-white px-3 py-1 rounded text-xs ml-2"
+              >
+                {copied ? '✓' : 'Copy'}
+              </button>
+            </div>
+          )}
+
+          {/* Code Editor Section */}
+          <div className="flex-1 min-h-0">
+            <CodeEditor 
+              socket={socket} 
+              code={code} 
+              setCode={setCode} 
+              sessionId={id as string}
+              language={language}
+              setLanguage={setLanguage}
+            />
+          </div>
+
+          {/* Video Call Section - Bottom */}
+          <div className="bg-gray-800 border-t border-gray-700">
+            <VideoCall 
+              socket={socket} 
+              userId={session.user.id} 
+              sessionId={id as string}
+              isMentor={isMentor}
+            />
+          </div>
+
+          {/* Floating Chat Button */}
+          <button
+            onClick={() => setShowChat(true)}
+            className="fixed bottom-4 right-4 bg-green-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-30"
+          >
+            💬
+          </button>
+
+          {/* Chat Modal - Hidden until button clicked */}
+          {showChat && (
+            <div className="fixed inset-0 z-40 bg-gray-900 flex flex-col">
+              <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
+                <h3 className="text-white font-semibold text-lg">Chat</h3>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
               </div>
-              {/* Video Window */}
-              <div className="h-80 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-                <VideoCall 
-                  socket={socket} 
-                  userId={session.user.id} 
-                  sessionId={id as string}
-                  isMentor={isMentor}
-                />
+              <div className="flex-1">
+                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
               </div>
             </div>
           )}
-          
-          {/* Mobile Layout */}
-          {isMobile && (
-            <>
-              {/* Floating Buttons */}
-              <div className="fixed bottom-4 left-4 right-4 flex justify-center gap-4 z-20">
-                <button
-                  onClick={() => setShowVideoModal(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg transition flex items-center gap-2"
-                >
-                  <span className="text-lg">🎥</span>
-                  <span className="text-sm font-semibold">Video</span>
-                </button>
-                <button
-                  onClick={() => setShowChat(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-full shadow-lg transition flex items-center gap-2"
-                >
-                  <span className="text-lg">💬</span>
-                  <span className="text-sm font-semibold">Chat</span>
-                </button>
-              </div>
-              
-              {/* Video Modal */}
-              {showVideoModal && (
-                <MobileVideoModal
-                  socket={socket}
-                  userId={session.user.id}
-                  sessionId={id as string}
-                  isMentor={isMentor}
-                  onClose={() => setShowVideoModal(false)}
-                />
-              )}
-              
-              {/* Chat Modal */}
-              {showChat && (
-                <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
-                  <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
-                    <h3 className="text-white font-semibold text-lg">💬 Chat</h3>
-                    <button
-                      onClick={() => setShowChat(false)}
-                      className="text-gray-400 hover:text-white text-2xl"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="flex-1">
-                    <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
-        
-        {/* Connection Status */}
-        {!isConnected && (
-          <div className="fixed bottom-4 right-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
-            Connecting to server...
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Connection Status */}
+      {!isConnected && (
+        <div className="fixed bottom-4 left-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
+          Connecting...
+        </div>
+      )}
     </Layout>
   )
 }
