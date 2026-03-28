@@ -24,48 +24,39 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
   useEffect(() => {
     if (!socket) return
 
+    const handleOffer = (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
+      if (data.fromUserId === userId) return
+      handleOfferInternal(data.offer, data.fromUserId)
+    }
+
+    const handleAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
+      handleAnswerInternal(data.answer)
+    }
+
+    const handleIceCandidate = (data: { candidate: RTCIceCandidateInit }) => {
+      handleIceCandidateInternal(data.candidate)
+    }
+
+    const handlePeerEndedCall = () => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+      setRemoteStreamActive(false)
+      setConnectionState('disconnected')
+    }
+
     socket.on('webrtc-offer', handleOffer)
     socket.on('webrtc-answer', handleAnswer)
     socket.on('webrtc-ice-candidate', handleIceCandidate)
     socket.on('peer-ended-call', handlePeerEndedCall)
 
     return () => {
-      socket.off('webrtc-offer')
-      socket.off('webrtc-answer')
-      socket.off('webrtc-ice-candidate')
-      socket.off('peer-ended-call')
-      cleanupCall()
+      socket.off('webrtc-offer', handleOffer)
+      socket.off('webrtc-answer', handleAnswer)
+      socket.off('webrtc-ice-candidate', handleIceCandidate)
+      socket.off('peer-ended-call', handlePeerEndedCall)
     }
-  }, [socket])
-
-  const cleanupCall = () => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
-      localStreamRef.current = null
-    }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null
-    }
-    setIsCallActive(false)
-    setRemoteStreamActive(false)
-    setConnectionState('closed')
-    setError('')
-  }
-
-  const handlePeerEndedCall = () => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null
-    }
-    setRemoteStreamActive(false)
-    setConnectionState('disconnected')
-  }
+  }, [socket, userId])
 
   const toggleVideo = () => {
     if (localStreamRef.current) {
@@ -173,7 +164,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
   }
 
-  const handleOffer = async ({ offer, fromUserId }: any) => {
+  const handleOfferInternal = async (offer: RTCSessionDescriptionInit, fromUserId: string) => {
     if (fromUserId === userId) return
 
     try {
@@ -216,7 +207,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
   }
 
-  const handleAnswer = async ({ answer }: any) => {
+  const handleAnswerInternal = async (answer: RTCSessionDescriptionInit) => {
     if (!peerConnectionRef.current) return
     
     try {
@@ -226,7 +217,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
     }
   }
 
-  const handleIceCandidate = async ({ candidate }: any) => {
+  const handleIceCandidateInternal = async (candidate: RTCIceCandidateInit) => {
     if (!peerConnectionRef.current) return
 
     try {
@@ -239,7 +230,22 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
   }
 
   const endCall = () => {
-    cleanupCall()
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop())
+      localStreamRef.current = null
+    }
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
+    setIsCallActive(false)
+    setRemoteStreamActive(false)
     socket.emit('end-call', { sessionId })
     onClose()
   }
@@ -282,7 +288,6 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
           </div>
         ) : (
           <div className="relative h-full">
-            {/* Remote Video - Full Screen */}
             <div className="absolute inset-0 bg-gray-900 rounded-lg overflow-hidden">
               <video
                 ref={remoteVideoRef}
@@ -293,17 +298,7 @@ export function MobileVideoModal({ socket, userId, sessionId, isMentor, onClose 
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : getConnectionStatusText()}
               </div>
-              {!remoteStreamActive && (
-                <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-white text-sm">{getConnectionStatusText()}</p>
-                  </div>
-                </div>
-              )}
             </div>
-            
-            {/* Local Video - Small PiP */}
             <div className="absolute bottom-20 right-4 w-32 h-24 bg-gray-900 rounded-lg overflow-hidden border-2 border-blue-500 shadow-lg">
               <video
                 ref={localVideoRef}

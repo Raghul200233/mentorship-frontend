@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
-export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
+interface VideoCallProps {
+  socket: any;
+  userId: string;
+  sessionId: string;
+  isMentor: boolean;
+}
+
+export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProps) {
   const [isCallActive, setIsCallActive] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
@@ -18,27 +25,55 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   useEffect(() => {
     if (!socket) return
 
-    socket.on('user-joined', ({ userId: joinedUserId }) => {
-      console.log('User joined:', joinedUserId)
-      setRemoteUserId(joinedUserId)
-    })
+    const handleUserJoined = (data: { userId: string }) => {
+      console.log('User joined:', data.userId)
+      setRemoteUserId(data.userId)
+    }
 
-    socket.on('user-left', ({ userId: leftUserId }) => {
-      console.log('User left:', leftUserId)
+    const handleUserLeft = (data: { userId: string }) => {
+      console.log('User left:', data.userId)
       if (isCallActive) {
         setError('The other user has left the session')
         endCall()
       }
-    })
+    }
+
+    socket.on('user-joined', handleUserJoined)
+    socket.on('user-left', handleUserLeft)
 
     return () => {
-      socket.off('user-joined')
-      socket.off('user-left')
+      socket.off('user-joined', handleUserJoined)
+      socket.off('user-left', handleUserLeft)
     }
   }, [socket, isCallActive])
 
   useEffect(() => {
     if (!socket) return
+
+    const handleOffer = (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
+      if (data.fromUserId === userId) return
+      console.log('📞 Received offer from:', data.fromUserId)
+      handleOfferInternal(data.offer, data.fromUserId)
+    }
+
+    const handleAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
+      console.log('📞 Received answer')
+      handleAnswerInternal(data.answer)
+    }
+
+    const handleIceCandidate = (data: { candidate: RTCIceCandidateInit }) => {
+      handleIceCandidateInternal(data.candidate)
+    }
+
+    const handlePeerEndedCall = () => {
+      console.log('Peer ended call')
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+      setRemoteStreamActive(false)
+      setConnectionState('disconnected')
+      setError('The other user ended the call')
+    }
 
     socket.on('webrtc-offer', handleOffer)
     socket.on('webrtc-answer', handleAnswer)
@@ -46,22 +81,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     socket.on('peer-ended-call', handlePeerEndedCall)
 
     return () => {
-      socket.off('webrtc-offer')
-      socket.off('webrtc-answer')
-      socket.off('webrtc-ice-candidate')
-      socket.off('peer-ended-call')
+      socket.off('webrtc-offer', handleOffer)
+      socket.off('webrtc-answer', handleAnswer)
+      socket.off('webrtc-ice-candidate', handleIceCandidate)
+      socket.off('peer-ended-call', handlePeerEndedCall)
     }
-  }, [socket])
-
-  const handlePeerEndedCall = () => {
-    console.log('Peer ended call')
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null
-    }
-    setRemoteStreamActive(false)
-    setConnectionState('disconnected')
-    setError('The other user ended the call')
-  }
+  }, [socket, userId])
 
   const toggleVideo = () => {
     if (localStreamRef.current) {
@@ -204,10 +229,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
   }
 
-  const handleOffer = async ({ offer, fromUserId }: any) => {
+  const handleOfferInternal = async (offer: RTCSessionDescriptionInit, fromUserId: string) => {
     if (fromUserId === userId) return
     
-    console.log('📞 Received offer from:', fromUserId)
+    console.log('📞 Processing offer from:', fromUserId)
 
     try {
       setError('')
@@ -260,10 +285,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
   }
 
-  const handleAnswer = async ({ answer }: any) => {
+  const handleAnswerInternal = async (answer: RTCSessionDescriptionInit) => {
     if (!peerConnectionRef.current) return
     
-    console.log('📞 Received answer')
+    console.log('📞 Processing answer')
     try {
       await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
       console.log('✅ Remote description set')
@@ -273,7 +298,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
   }
 
-  const handleIceCandidate = async ({ candidate }: any) => {
+  const handleIceCandidateInternal = async (candidate: RTCIceCandidateInit) => {
     if (!peerConnectionRef.current) return
 
     try {
