@@ -134,23 +134,20 @@ export default function SessionPage({ session }: any) {
           </button>
 
           {/* Chat Modal - Hidden until button clicked */}
-          {showChat && (
-            <div className="fixed inset-0 z-40 bg-gray-900 flex flex-col">
-              <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
-                <h3 className="text-white font-semibold text-lg">Chat</h3>
-                <button
-                  onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-2xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700 transition"
-                  style={{ fontSize: '24px' }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1">
-                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-              </div>
-            </div>
-          )}
+{/* Chat Modal - Hidden until button clicked */}
+{showChat && (
+  <div className="fixed inset-0 z-40 bg-gray-900 flex flex-col">
+    <div className="flex-1">
+      <Chat 
+        socket={socket} 
+        userId={session.user.id} 
+        sessionId={id as string}
+        onClose={() => setShowChat(false)}
+        isModal={true}
+      />
+    </div>
+  </div>
+)}
         </div>
       )}
 
