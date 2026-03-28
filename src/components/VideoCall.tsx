@@ -7,11 +7,35 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [connectionState, setConnectionState] = useState<string>('new')
   const [error, setError] = useState<string>('')
+  const [remoteUserId, setRemoteUserId] = useState<string>('')
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+
+  // Listen for user joined/left events
+  useEffect(() => {
+    if (!socket) return
+
+    socket.on('user-joined', ({ userId: joinedUserId }) => {
+      console.log('User joined:', joinedUserId)
+      setRemoteUserId(joinedUserId)
+    })
+
+    socket.on('user-left', ({ userId: leftUserId }) => {
+      console.log('User left:', leftUserId)
+      if (isCallActive) {
+        setError('The other user has left the session')
+        endCall()
+      }
+    })
+
+    return () => {
+      socket.off('user-joined')
+      socket.off('user-left')
+    }
+  }, [socket, isCallActive])
 
   useEffect(() => {
     if (!socket) return
@@ -26,28 +50,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
       socket.off('webrtc-answer')
       socket.off('webrtc-ice-candidate')
       socket.off('peer-ended-call')
-      // Don't cleanup on unmount - let the call continue
     }
   }, [socket])
-
-  const cleanupCall = () => {
-    console.log('🧹 Cleaning up call...')
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
-    }
-    // Don't stop tracks here - they'll be stopped when call ends
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null
-    }
-    setIsCallActive(false)
-    setRemoteStreamActive(false)
-    setConnectionState('closed')
-    setError('')
-  }
 
   const handlePeerEndedCall = () => {
     console.log('Peer ended call')
@@ -56,6 +60,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
     setRemoteStreamActive(false)
     setConnectionState('disconnected')
+    setError('The other user ended the call')
   }
 
   const toggleVideo = () => {
@@ -118,10 +123,11 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
 
     pc.ontrack = (event) => {
-      console.log('📺 Received remote stream', event.streams[0].getTracks().map(t => t.kind))
+      console.log('📺 Received remote stream')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
+        console.log('Remote stream attached')
       }
     }
 
@@ -141,7 +147,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
       setError('')
       console.log('🎥 Starting call...')
       
-      // Get user media with constraints
+      // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: {
           width: { ideal: 1280 },
@@ -276,6 +282,17 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
         console.log('✅ ICE candidate added')
       } else {
         console.log('Waiting for remote description to add ICE candidate')
+        // Store candidate for later
+        setTimeout(async () => {
+          if (peerConnectionRef.current?.remoteDescription) {
+            try {
+              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+              console.log('✅ Delayed ICE candidate added')
+            } catch (err) {
+              console.error('Error adding delayed ICE candidate:', err)
+            }
+          }
+        }, 1000)
       }
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
@@ -414,7 +431,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
                   : 'bg-red-600 hover:bg-red-700'
               } text-white`}
             >
-              {isVideoEnabled ? '🎥 Camera On' : '🎥 Camera Off'}
+              {isVideoEnabled ? '🎥 Camera' : '🎥 Off'}
             </button>
             <button
               onClick={toggleAudio}
@@ -424,7 +441,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
                   : 'bg-red-600 hover:bg-red-700'
               } text-white`}
             >
-              {isAudioEnabled ? '🎤 Mic On' : '🎤 Mic Off'}
+              {isAudioEnabled ? '🎤 Mic' : '🎤 Off'}
             </button>
             <button
               onClick={endCall}
