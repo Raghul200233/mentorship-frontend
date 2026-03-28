@@ -14,35 +14,43 @@ export default function Dashboard({ session }: any) {
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
   useEffect(() => {
+    // Check if session exists
     if (!session) {
+      console.log('No session found, redirecting to login')
       router.push('/')
-    } else {
-      fetchSessions()
+      return
     }
+    
+    console.log('Session user:', session.user?.email)
+    console.log('Session access token exists:', !!session.access_token)
+    
+    fetchSessions()
   }, [session])
-
-  const getToken = async () => {
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
-    return currentSession?.access_token
-  }
 
   const fetchSessions = async () => {
     try {
       setError('')
-      const token = await getToken()
       
-      if (!token) {
-        throw new Error('No authentication token found')
+      if (!session?.access_token) {
+        throw new Error('No authentication token found. Please login again.')
       }
       
-      console.log('Fetching sessions with token:', token.substring(0, 20) + '...')
+      console.log('Fetching sessions with token')
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
+      
+      if (response.status === 401) {
+        // Token expired or invalid
+        console.log('Token invalid, redirecting to login')
+        await supabase.auth.signOut()
+        router.push('/')
+        return
+      }
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -64,21 +72,27 @@ export default function Dashboard({ session }: any) {
       setCreating(true)
       setError('')
       
-      const token = await getToken()
-      
-      if (!token) {
+      if (!session?.access_token) {
         throw new Error('No authentication token found. Please login again.')
       }
       
-      console.log('Creating session with token:', token.substring(0, 20) + '...')
+      console.log('Creating session with token')
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
+      
+      if (response.status === 401) {
+        // Token expired or invalid
+        console.log('Token invalid during session creation')
+        await supabase.auth.signOut()
+        router.push('/')
+        throw new Error('Session expired. Please login again.')
+      }
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -87,7 +101,7 @@ export default function Dashboard({ session }: any) {
       }
       
       const data = await response.json()
-      console.log('Session created:', data)
+      console.log('Session created:', data.id)
       router.push(`/session/${data.id}`)
     } catch (error: any) {
       console.error('Error creating session:', error)
@@ -105,12 +119,15 @@ export default function Dashboard({ session }: any) {
     
     try {
       setDeleting(sessionId)
-      const token = await getToken()
+      
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })

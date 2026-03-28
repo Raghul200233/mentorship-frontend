@@ -2,73 +2,50 @@ import '@/styles/globals.css'
 import type { AppProps } from 'next/app'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/utils/supabase'
+import Head from 'next/head'
 import { useRouter } from 'next/router'
-
-// Simple Error Boundary Component
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props)
-    this.state = { hasError: false, error: null }
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error }
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-          <div className="bg-red-900/50 border border-red-500 rounded-lg p-6 max-w-md">
-            <h2 className="text-red-400 text-xl font-bold mb-2">Something went wrong</h2>
-            <p className="text-gray-300 mb-4">{this.state.error?.message || 'An error occurred'}</p>
-            <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null })
-                window.location.reload()
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-            >
-              Try again
-            </button>
-          </div>
-        </div>
-      )
-    }
-
-    return this.props.children
-  }
-}
-
-import React from 'react'
 
 export default function App({ Component, pageProps }: AppProps) {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
   useEffect(() => {
     // Check current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+    const checkSession = async () => {
+      try {
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Error getting session:', error)
+        }
+        
+        console.log('Session loaded:', currentSession?.user?.email || 'No session')
+        setSession(currentSession)
+      } catch (error) {
+        console.error('Session check error:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    checkSession()
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      console.log('Auth state changed:', _event, newSession?.user?.email)
+      setSession(newSession)
+      
+      // If user logs out, redirect to home
+      if (!newSession && router.pathname !== '/') {
+        router.push('/')
+      }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router])
 
   if (loading) {
     return (
@@ -82,8 +59,13 @@ export default function App({ Component, pageProps }: AppProps) {
   }
 
   return (
-    <ErrorBoundary>
+    <>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes" />
+        <title>MentorConnect - Real-time Mentorship Platform</title>
+        <meta name="description" content="Connect with mentors in real-time with video calls, chat, and collaborative coding" />
+      </Head>
       <Component {...pageProps} session={session} />
-    </ErrorBoundary>
+    </>
   )
 }
