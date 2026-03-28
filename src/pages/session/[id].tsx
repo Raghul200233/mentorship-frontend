@@ -14,13 +14,19 @@ export default function SessionPage({ session }: any) {
   const [code, setCode] = useState('// Start coding here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n')
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
-  const [showChat, setShowChat] = useState(false)
-  const [showVideo, setShowVideo] = useState(false)
+  const [showChat, setShowChat] = useState(true) // Default to true on desktop
+  const [showVideoModal, setShowVideoModal] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
+      // On mobile, chat starts hidden
+      if (window.innerWidth < 768) {
+        setShowChat(false)
+      } else {
+        setShowChat(true)
+      }
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
@@ -87,12 +93,14 @@ export default function SessionPage({ session }: any) {
             />
           </div>
           
-          {/* Desktop Layout - Video and Chat Sidebar */}
+          {/* Desktop Layout - Right Sidebar */}
           {!isMobile && (
             <div className="absolute top-4 right-4 bottom-4 w-80 flex flex-col gap-4 z-10 pointer-events-auto">
+              {/* Chat Window */}
               <div className="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
               </div>
+              {/* Video Window */}
               <div className="h-80 bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <VideoCall 
                   socket={socket} 
@@ -104,53 +112,56 @@ export default function SessionPage({ session }: any) {
             </div>
           )}
           
-          {/* Mobile Layout - Bottom Buttons */}
+          {/* Mobile Layout */}
           {isMobile && (
-            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-20">
-              <button
-                onClick={() => setShowVideo(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full shadow-lg transition flex items-center gap-2"
-              >
-                <span className="text-xl">🎥</span>
-                <span className="font-semibold">Video Call</span>
-              </button>
-              <button
-                onClick={() => setShowChat(true)}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition flex items-center gap-2"
-              >
-                <span className="text-xl">💬</span>
-                <span className="font-semibold">Chat</span>
-              </button>
-            </div>
-          )}
-          
-          {/* Mobile Video Modal */}
-          {isMobile && showVideo && (
-            <MobileVideoModal
-              socket={socket}
-              userId={session.user.id}
-              sessionId={id as string}
-              isMentor={isMentor}
-              onClose={() => setShowVideo(false)}
-            />
-          )}
-          
-          {/* Mobile Chat Modal */}
-          {isMobile && showChat && (
-            <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
-              <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
-                <h3 className="text-white font-semibold text-lg">💬 Chat</h3>
+            <>
+              {/* Floating Buttons */}
+              <div className="fixed bottom-4 left-4 right-4 flex justify-center gap-4 z-20">
                 <button
-                  onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  onClick={() => setShowVideoModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg transition flex items-center gap-2"
                 >
-                  ✕
+                  <span className="text-lg">🎥</span>
+                  <span className="text-sm font-semibold">Video</span>
+                </button>
+                <button
+                  onClick={() => setShowChat(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-full shadow-lg transition flex items-center gap-2"
+                >
+                  <span className="text-lg">💬</span>
+                  <span className="text-sm font-semibold">Chat</span>
                 </button>
               </div>
-              <div className="flex-1">
-                <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
-              </div>
-            </div>
+              
+              {/* Video Modal */}
+              {showVideoModal && (
+                <MobileVideoModal
+                  socket={socket}
+                  userId={session.user.id}
+                  sessionId={id as string}
+                  isMentor={isMentor}
+                  onClose={() => setShowVideoModal(false)}
+                />
+              )}
+              
+              {/* Chat Modal */}
+              {showChat && (
+                <div className="absolute inset-0 z-40 bg-gray-900 flex flex-col">
+                  <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
+                    <h3 className="text-white font-semibold text-lg">💬 Chat</h3>
+                    <button
+                      onClick={() => setShowChat(false)}
+                      className="text-gray-400 hover:text-white text-2xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         
