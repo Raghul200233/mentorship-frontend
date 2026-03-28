@@ -2,32 +2,32 @@ import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 
 const LANGUAGE_CONFIGS = {
-  javascript: { language: 'javascript', extension: 'js', name: 'JavaScript' },
-  python: { language: 'python', extension: 'py', name: 'Python' },
-  c: { language: 'c', extension: 'c', name: 'C' },
-  cpp: { language: 'cpp', extension: 'cpp', name: 'C++' },
-  java: { language: 'java', extension: 'java', name: 'Java' },
-  html: { language: 'html', extension: 'html', name: 'HTML' },
-  css: { language: 'css', extension: 'css', name: 'CSS' },
-  typescript: { language: 'typescript', extension: 'ts', name: 'TypeScript' },
-  sql: { language: 'sql', extension: 'sql', name: 'SQL' },
-  go: { language: 'go', extension: 'go', name: 'Go' },
-  rust: { language: 'rust', extension: 'rs', name: 'Rust' },
-  php: { language: 'php', extension: 'php', name: 'PHP' },
-  ruby: { language: 'ruby', extension: 'rb', name: 'Ruby' },
-  swift: { language: 'swift', extension: 'swift', name: 'Swift' },
-  kotlin: { language: 'kotlin', extension: 'kt', name: 'Kotlin' },
+  javascript: { language: 'javascript', name: 'JavaScript' },
+  python: { language: 'python', name: 'Python' },
+  html: { language: 'html', name: 'HTML' },
+  css: { language: 'css', name: 'CSS' },
+  typescript: { language: 'typescript', name: 'TypeScript' },
+  java: { language: 'java', name: 'Java' },
+  c: { language: 'c', name: 'C' },
+  cpp: { language: 'cpp', name: 'C++' },
+  sql: { language: 'sql', name: 'SQL' },
+  go: { language: 'go', name: 'Go' },
+  rust: { language: 'rust', name: 'Rust' },
+  php: { language: 'php', name: 'PHP' },
+  ruby: { language: 'ruby', name: 'Ruby' },
+  swift: { language: 'swift', name: 'Swift' },
+  kotlin: { language: 'kotlin', name: 'Kotlin' },
 }
 
 const DEFAULT_CODE: Record<string, string> = {
   javascript: '// JavaScript Code\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();',
   python: '# Python Code\n\ndef hello():\n    print("Hello, World!")\n\nhello()',
-  c: '// C Code\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
-  cpp: '// C++ Code\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
-  java: '// Java Code\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
   html: '<!-- HTML Code -->\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>',
   css: '/* CSS Code */\nbody {\n    margin: 0;\n    padding: 20px;\n    font-family: Arial, sans-serif;\n}\n\nh1 {\n    color: #333;\n}',
   typescript: '// TypeScript Code\n\nfunction hello(name: string): void {\n    console.log(`Hello, ${name}!`);\n}\n\nhello("World");',
+  java: '// Java Code\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
+  c: '// C Code\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
+  cpp: '// C++ Code\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
   sql: '-- SQL Code\nCREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100)\n);\n\nSELECT * FROM users;',
   go: '// Go Code\npackage main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}',
   rust: '// Rust Code\nfn main() {\n    println!("Hello, World!");\n}',
@@ -39,51 +39,52 @@ const DEFAULT_CODE: Record<string, string> = {
 
 export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
   const editorRef = useRef<any>(null)
-  const isLocalChange = useRef(false)
-  const timeoutRef = useRef<NodeJS.Timeout>()
+  const isUpdatingFromRemote = useRef(false)
+  const updateTimeoutRef = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
     if (!socket) return
 
     const handleCodeUpdate = (data: { code: string, language: string }) => {
-      if (!isLocalChange.current && editorRef.current) {
-        const editor = editorRef.current
-        const currentPosition = editor.getPosition()
+      if (!isUpdatingFromRemote.current && editorRef.current) {
+        isUpdatingFromRemote.current = true
+        const currentPosition = editorRef.current.getPosition()
         
+        editorRef.current.setValue(data.code)
         setCode(data.code)
+        
         if (data.language && data.language !== language) {
           setLanguage(data.language)
         }
         
-        editor.setValue(data.code)
-        
-        // Restore cursor position
         if (currentPosition) {
-          editor.setPosition(currentPosition)
+          editorRef.current.setPosition(currentPosition)
         }
+        
+        setTimeout(() => {
+          isUpdatingFromRemote.current = false
+        }, 50)
       }
-      isLocalChange.current = false
     }
 
     socket.on('code-update', handleCodeUpdate)
 
     return () => {
       socket.off('code-update', handleCodeUpdate)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current)
     }
   }, [socket, setCode, language, setLanguage])
 
   const handleEditorChange = useCallback((value: string | undefined) => {
-    if (value !== undefined && editorRef.current) {
-      isLocalChange.current = true
+    if (value !== undefined && editorRef.current && !isUpdatingFromRemote.current) {
       setCode(value)
       
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      timeoutRef.current = setTimeout(() => {
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current)
+      updateTimeoutRef.current = setTimeout(() => {
         if (socket) {
           socket.emit('code-update', { sessionId, code: value, language })
         }
-      }, 100)
+      }, 150)
     }
   }, [socket, sessionId, language, setCode])
 
@@ -119,7 +120,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
             className="bg-gray-800 text-white px-3 py-1 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium cursor-pointer"
-            style={{ minWidth: '120px' }}
           >
             {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
               <option key={key} value={key}>
@@ -146,7 +146,8 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             formatOnPaste: true,
             formatOnType: true,
             readOnly: false,
-            cursorBlinking: 'smooth'
+            cursorBlinking: 'smooth',
+            renderWhitespace: 'none',
           }}
         />
       </div>
