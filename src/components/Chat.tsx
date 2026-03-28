@@ -67,13 +67,13 @@ export function Chat({ socket, userId, sessionId, onClose, isModal }: ChatProps)
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      {/* Header with close button if modal */}
-      <div className="bg-gray-700 p-3 border-b border-gray-600 flex justify-between items-center">
-        <h3 className="text-white font-semibold text-sm">💬 Chat</h3>
+      {/* Header with X button - Always visible */}
+      <div className="bg-gray-700 p-4 border-b border-gray-600 flex justify-between items-center">
+        <h3 className="text-white font-semibold text-base">💬 Chat</h3>
         {isModal && onClose && (
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-600"
+            className="text-white bg-red-600 hover:bg-red-700 w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition"
           >
             ✕
           </button>

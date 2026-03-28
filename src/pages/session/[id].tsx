@@ -133,25 +133,22 @@ export default function SessionPage({ session }: any) {
             💬
           </button>
 
-          {/* Chat Modal - Hidden until button clicked */}
-{/* Chat Modal - Hidden until button clicked */}
-{showChat && (
-  <div className="fixed inset-0 z-40 bg-gray-900 flex flex-col">
-    <div className="flex-1">
-      <Chat 
-        socket={socket} 
-        userId={session.user.id} 
-        sessionId={id as string}
-        onClose={() => setShowChat(false)}
-        isModal={true}
-      />
-    </div>
-  </div>
-)}
+          {/* Chat Modal - Full screen with X button */}
+          {showChat && (
+            <div className="fixed inset-0 z-50 bg-gray-900">
+              <Chat 
+                socket={socket} 
+                userId={session.user.id} 
+                sessionId={id as string}
+                onClose={() => setShowChat(false)}
+                isModal={true}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Desktop Copy Link Bar - Add for desktop too */}
+      {/* Desktop Copy Link Bar */}
       {!isMobile && isMentor && (
         <div className="fixed top-16 right-4 z-20 bg-gray-800 rounded-lg shadow-lg p-2 flex items-center gap-2">
           <code className="text-xs text-gray-300 max-w-xs truncate">
