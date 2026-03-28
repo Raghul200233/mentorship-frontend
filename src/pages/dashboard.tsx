@@ -1,6 +1,7 @@
 import { Layout } from '@/components/Layout'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import { supabase } from '@/utils/supabase'
 
 export default function Dashboard({ session }: any) {
   const router = useRouter()
@@ -20,12 +21,26 @@ export default function Dashboard({ session }: any) {
     }
   }, [session])
 
+  const getToken = async () => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    return currentSession?.access_token
+  }
+
   const fetchSessions = async () => {
     try {
       setError('')
+      const token = await getToken()
+      
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+      
+      console.log('Fetching sessions with token:', token.substring(0, 20) + '...')
+      
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions`, {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       })
       
@@ -49,20 +64,30 @@ export default function Dashboard({ session }: any) {
       setCreating(true)
       setError('')
       
+      const token = await getToken()
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.')
+      }
+      
+      console.log('Creating session with token:', token.substring(0, 20) + '...')
+      
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
       
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Create session error:', errorData)
         throw new Error(errorData.details || errorData.error || 'Failed to create session')
       }
       
       const data = await response.json()
+      console.log('Session created:', data)
       router.push(`/session/${data.id}`)
     } catch (error: any) {
       console.error('Error creating session:', error)
@@ -80,10 +105,13 @@ export default function Dashboard({ session }: any) {
     
     try {
       setDeleting(sessionId)
+      const token = await getToken()
+      
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       })
       
