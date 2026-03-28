@@ -53,7 +53,7 @@ export default function SessionPage({ session }: any) {
 
   return (
     <Layout session={session}>
-      {/* Desktop View - No Changes */}
+      {/* Desktop View */}
       {!isMobile && (
         <div className="h-screen flex overflow-hidden">
           {/* Left - Code Editor */}
@@ -85,10 +85,10 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* Mobile View - Like Zoom Layout */}
+      {/* Mobile View */}
       {isMobile && (
         <div className="h-screen flex flex-col bg-gray-900">
-          {/* Top - Copy Link Bar */}
+          {/* Top - Copy Link Bar (always visible for mentor) */}
           {isMentor && (
             <div className="bg-blue-900/50 p-3 flex justify-between items-center border-b border-gray-700">
               <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
@@ -140,7 +140,7 @@ export default function SessionPage({ session }: any) {
                 <h3 className="text-white font-semibold text-lg">Chat</h3>
                 <button
                   onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl font-bold"
                 >
                   ✕
                 </button>
@@ -150,6 +150,21 @@ export default function SessionPage({ session }: any) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Desktop Copy Link Bar - Add for desktop too */}
+      {!isMobile && isMentor && (
+        <div className="fixed top-16 right-4 z-20 bg-gray-800 rounded-lg shadow-lg p-2 flex items-center gap-2">
+          <code className="text-xs text-gray-300 max-w-xs truncate">
+            {inviteLink}
+          </code>
+          <button
+            onClick={copyInviteLink}
+            className="bg-blue-600 text-white px-2 py-1 rounded text-xs"
+          >
+            {copied ? '✓' : 'Copy Link'}
+          </button>
         </div>
       )}
 

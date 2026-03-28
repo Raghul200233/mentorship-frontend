@@ -14,6 +14,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [connectionState, setConnectionState] = useState<string>('new')
   const [error, setError] = useState<string>('')
+  const [localStreamReady, setLocalStreamReady] = useState(false)
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -22,18 +23,25 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const cleanupCall = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop()
+      })
       localStreamRef.current = null
     }
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
     }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
     setIsCallActive(false)
     setRemoteStreamActive(false)
     setConnectionState('closed')
+    setLocalStreamReady(false)
   }
 
   useEffect(() => {
@@ -73,16 +81,20 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const toggleVideo = () => {
     if (localStreamRef.current) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0]
-      if (videoTrack) videoTrack.enabled = !isVideoEnabled
-      setIsVideoEnabled(!isVideoEnabled)
+      if (videoTrack) {
+        videoTrack.enabled = !isVideoEnabled
+        setIsVideoEnabled(!isVideoEnabled)
+      }
     }
   }
 
   const toggleAudio = () => {
     if (localStreamRef.current) {
       const audioTrack = localStreamRef.current.getAudioTracks()[0]
-      if (audioTrack) audioTrack.enabled = !isAudioEnabled
-      setIsAudioEnabled(!isAudioEnabled)
+      if (audioTrack) {
+        audioTrack.enabled = !isAudioEnabled
+        setIsAudioEnabled(!isAudioEnabled)
+      }
     }
   }
 
@@ -90,7 +102,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
       ]
     })
 
@@ -102,7 +115,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
     pc.oniceconnectionstatechange = () => {
       setConnectionState(pc.iceConnectionState)
-      if (pc.iceConnectionState === 'connected') setRemoteStreamActive(true)
+      if (pc.iceConnectionState === 'connected') {
+        setRemoteStreamActive(true)
+      }
     }
 
     pc.ontrack = (event) => {
@@ -123,9 +138,20 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const startCall = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      setError('')
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      })
+      
       localStreamRef.current = stream
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream
+      
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream
+        localVideoRef.current.play().catch(e => console.log(e))
+        setLocalStreamReady(true)
+      }
+      
       setIsVideoEnabled(true)
       setIsAudioEnabled(true)
 
@@ -138,7 +164,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       setIsCallActive(true)
       setConnectionState('connecting')
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error:', error)
       setError('Please allow camera and microphone access')
     }
   }
@@ -146,9 +173,16 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
       if (!localStreamRef.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: true 
+        })
         localStreamRef.current = stream
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream
+          localVideoRef.current.play().catch(e => console.log(e))
+          setLocalStreamReady(true)
+        }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
       }
@@ -235,12 +269,17 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 className="w-full h-full object-cover"
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                You
+                You {!isVideoEnabled && '(Off)'}
               </div>
+              {!localStreamReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Controls - Like Zoom */}
+          {/* Controls */}
           <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
             <button
               onClick={toggleAudio}
