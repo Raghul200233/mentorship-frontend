@@ -15,11 +15,23 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [connectionState, setConnectionState] = useState<string>('new')
   const [error, setError] = useState<string>('')
   const [localStreamReady, setLocalStreamReady] = useState(false)
+  const [autoStartAttempted, setAutoStartAttempted] = useState(false)
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+
+  // Auto-start call when component mounts
+  useEffect(() => {
+    if (!autoStartAttempted && !isCallActive) {
+      setAutoStartAttempted(true)
+      // Small delay to ensure everything is ready
+      setTimeout(() => {
+        startCall()
+      }, 1000)
+    }
+  }, [])
 
   const cleanupCall = () => {
     if (localStreamRef.current) {
@@ -74,7 +86,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.off('webrtc-answer', handleAnswer)
       socket.off('webrtc-ice-candidate', handleIceCandidate)
       socket.off('peer-ended-call', handlePeerEndedCall)
-      cleanupCall()
     }
   }, [socket, userId])
 
@@ -114,6 +125,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState)
       setConnectionState(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
@@ -121,6 +133,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.ontrack = (event) => {
+      console.log('Received remote track')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -138,7 +151,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const startCall = async () => {
     try {
+      console.log('Starting call with camera and mic...')
       setError('')
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
@@ -165,8 +180,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsCallActive(true)
       setConnectionState('connecting')
     } catch (error: any) {
-      console.error('Error:', error)
-      setError('Please allow camera and microphone access')
+      console.error('Error starting call:', error)
+      if (error.name === 'NotAllowedError') {
+        setError('Please allow camera and microphone access to join the session')
+      } else if (error.name === 'NotFoundError') {
+        setError('No camera or microphone found on your device')
+      } else {
+        setError('Unable to access camera/microphone. Please check permissions.')
+      }
     }
   }
 
@@ -198,7 +219,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsCallActive(true)
       setConnectionState('connecting')
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error handling offer:', error)
     }
   }
 
@@ -235,12 +256,19 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       {!isCallActive ? (
         <div className="p-6 text-center">
-          <button
-            onClick={startCall}
-            className="bg-green-600 text-white px-6 py-2 rounded-full font-semibold"
-          >
-            Start Call
-          </button>
+          {error ? (
+            <button
+              onClick={startCall}
+              className="bg-green-600 text-white px-6 py-2 rounded-full font-semibold"
+            >
+              Try Again
+            </button>
+          ) : (
+            <div className="flex flex-col items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mb-3"></div>
+              <p className="text-gray-400 text-sm">Requesting camera and microphone access...</p>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -287,7 +315,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
-              {isAudioEnabled ? '🎤' : '🔇'}
+              {isAudioEnabled ? '🎤 Mic On' : '🔇 Mic Off'}
             </button>
             <button
               onClick={toggleVideo}
@@ -295,13 +323,13 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
-              {isVideoEnabled ? '🎥' : '📷'}
+              {isVideoEnabled ? '🎥 Camera On' : '📷 Camera Off'}
             </button>
             <button
               onClick={endCall}
               className="p-3 rounded-full bg-red-600 text-white"
             >
-              📞
+              📞 End Call
             </button>
           </div>
         </>

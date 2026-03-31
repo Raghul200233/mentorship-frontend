@@ -56,7 +56,6 @@ export default function SessionPage({ session }: any) {
       {/* Desktop View */}
       {!isMobile && (
         <div className="h-screen flex overflow-hidden">
-          {/* Left - Code Editor */}
           <div className="w-2/3 border-r border-gray-700">
             <CodeEditor 
               socket={socket} 
@@ -67,8 +66,6 @@ export default function SessionPage({ session }: any) {
               setLanguage={setLanguage}
             />
           </div>
-          
-          {/* Right - Chat and Video */}
           <div className="w-1/3 flex flex-col">
             <div className="h-1/2 border-b border-gray-700">
               <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
@@ -88,7 +85,6 @@ export default function SessionPage({ session }: any) {
       {/* Mobile View */}
       {isMobile && (
         <div className="h-screen flex flex-col bg-gray-900">
-          {/* Top - Copy Link Bar (always visible for mentor) */}
           {isMentor && (
             <div className="bg-blue-900/50 p-3 flex justify-between items-center border-b border-gray-700">
               <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
@@ -103,7 +99,6 @@ export default function SessionPage({ session }: any) {
             </div>
           )}
 
-          {/* Code Editor Section */}
           <div className="flex-1 min-h-0">
             <CodeEditor 
               socket={socket} 
@@ -115,7 +110,6 @@ export default function SessionPage({ session }: any) {
             />
           </div>
 
-          {/* Video Call Section - Bottom */}
           <div className="bg-gray-800 border-t border-gray-700">
             <VideoCall 
               socket={socket} 
@@ -125,7 +119,6 @@ export default function SessionPage({ session }: any) {
             />
           </div>
 
-          {/* Floating Chat Button */}
           <button
             onClick={() => setShowChat(true)}
             className="fixed bottom-4 right-4 bg-green-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-30"
@@ -133,7 +126,6 @@ export default function SessionPage({ session }: any) {
             💬
           </button>
 
-          {/* Chat Modal - Full screen with X button */}
           {showChat && (
             <div className="fixed inset-0 z-50 bg-gray-900">
               <Chat 
@@ -148,7 +140,6 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* Desktop Copy Link Bar */}
       {!isMobile && isMentor && (
         <div className="fixed top-16 right-4 z-20 bg-gray-800 rounded-lg shadow-lg p-2 flex items-center gap-2">
           <code className="text-xs text-gray-300 max-w-xs truncate">
@@ -163,7 +154,6 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* Connection Status */}
       {!isConnected && (
         <div className="fixed bottom-4 left-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
           Connecting...
