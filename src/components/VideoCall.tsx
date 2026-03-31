@@ -99,9 +99,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
+        { urls: 'stun:stun2.l.google.com:19302' }
       ]
     }
 
@@ -131,7 +129,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!)
-        console.log('Added track:', track.kind)
       })
     }
 
@@ -141,13 +138,11 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const startCall = async () => {
     try {
       setError('')
+      setLocalVideoReady(false)
       console.log('Starting call...')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }, 
+        video: true, 
         audio: true 
       })
       
@@ -155,11 +150,20 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
+        
+        // Set video ready when metadata is loaded
         localVideoRef.current.onloadedmetadata = () => {
-          console.log('Local video loaded')
+          console.log('Local video metadata loaded')
           setLocalVideoReady(true)
         }
-        localVideoRef.current.play()
+        
+        // Also set ready when playing starts
+        localVideoRef.current.onplaying = () => {
+          console.log('Local video playing')
+          setLocalVideoReady(true)
+        }
+        
+        localVideoRef.current.play().catch(e => console.log('Play error:', e))
       }
       
       setIsVideoEnabled(true)
@@ -171,7 +175,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
-      console.log('Offer sent')
 
       setIsCallActive(true)
     } catch (error: any) {
@@ -187,23 +190,28 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
       console.log('Processing offer...')
+      setLocalVideoReady(false)
       
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }, 
+          video: true, 
           audio: true 
         })
         localStreamRef.current = stream
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
+          
           localVideoRef.current.onloadedmetadata = () => {
-            console.log('Local video loaded')
+            console.log('Local video metadata loaded')
             setLocalVideoReady(true)
           }
-          localVideoRef.current.play()
+          
+          localVideoRef.current.onplaying = () => {
+            console.log('Local video playing')
+            setLocalVideoReady(true)
+          }
+          
+          localVideoRef.current.play().catch(e => console.log('Play error:', e))
         }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
@@ -213,12 +221,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       peerConnectionRef.current = pc
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      console.log('Remote description set')
       
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
       socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
-      console.log('Answer sent')
 
       setIsCallActive(true)
     } catch (error) {
@@ -230,7 +236,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const handleAnswerInternal = async (answer: RTCSessionDescriptionInit) => {
     if (!peerConnectionRef.current) return
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
-    console.log('Remote description set from answer')
   }
 
   const handleIceCandidateInternal = async (candidate: RTCIceCandidateInit) => {
@@ -298,7 +303,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Off)'}
               </div>
-              {!localVideoReady && (
+              {!localVideoReady && localStreamRef.current && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
