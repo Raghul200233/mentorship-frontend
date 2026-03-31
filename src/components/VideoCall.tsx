@@ -99,7 +99,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
       ]
     }
 
@@ -138,24 +140,36 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setError('')
       setLocalVideoReady(false)
       
-      console.log('Requesting camera and microphone...')
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: true 
-      })
+      // HIGH QUALITY VIDEO CONSTRAINTS
+      const constraints = {
+        video: {
+          width: { ideal: 1280, min: 640, max: 1920 },
+          height: { ideal: 720, min: 480, max: 1080 },
+          frameRate: { ideal: 30, min: 15, max: 60 },
+          aspectRatio: { ideal: 1.7777777778 } // 16:9
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 1 }
+        }
+      }
       
-      console.log('Got stream, tracks:', stream.getTracks().length)
+      console.log('Requesting HD camera...')
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      
+      console.log('Got HD stream, tracks:', stream.getTracks().length)
       localStreamRef.current = stream
       
-      // IMPORTANT: Set local video source
       if (localVideoRef.current) {
-        console.log('Setting local video srcObject')
         localVideoRef.current.srcObject = stream
         localVideoRef.current.onloadedmetadata = () => {
-          console.log('Local video loaded')
+          console.log('Local video loaded - HD quality')
           setLocalVideoReady(true)
         }
-        localVideoRef.current.play().catch(e => console.log('Play error:', e))
+        localVideoRef.current.play()
       }
       
       setIsVideoEnabled(true)
@@ -171,7 +185,30 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsCallActive(true)
     } catch (error: any) {
       console.error('Error starting call:', error)
-      setError('Please allow camera and microphone access')
+      // Fallback to default quality if HD fails
+      try {
+        console.log('Falling back to default quality...')
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        localStreamRef.current = stream
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream
+          localVideoRef.current.onloadedmetadata = () => setLocalVideoReady(true)
+          localVideoRef.current.play()
+        }
+        setIsVideoEnabled(true)
+        setIsAudioEnabled(true)
+
+        const pc = createPeerConnection()
+        peerConnectionRef.current = pc
+
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
+
+        setIsCallActive(true)
+      } catch (fallbackError) {
+        setError('Please allow camera and microphone access')
+      }
     }
   }
 
@@ -180,20 +217,25 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setLocalVideoReady(false)
       
       if (!localStreamRef.current) {
-        console.log('Getting camera for offer...')
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
-          audio: true 
-        })
+        const constraints = {
+          video: {
+            width: { ideal: 1280, min: 640, max: 1920 },
+            height: { ideal: 720, min: 480, max: 1080 },
+            frameRate: { ideal: 30 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
         localStreamRef.current = stream
         
-        // IMPORTANT: Set local video source
         if (localVideoRef.current) {
-          console.log('Setting local video srcObject from offer')
           localVideoRef.current.srcObject = stream
-          localVideoRef.current.onloadedmetadata = () => {
-            setLocalVideoReady(true)
-          }
+          localVideoRef.current.onloadedmetadata = () => setLocalVideoReady(true)
           localVideoRef.current.play()
         }
         setIsVideoEnabled(true)
@@ -249,22 +291,23 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         </div>
       ) : (
         <>
-          {/* 2 VIDEO IMAGES - SIDE BY SIDE */}
+          {/* 2 VIDEO IMAGES - HD QUALITY */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            {/* PEER VIDEO (LEFT) */}
+            {/* PEER VIDEO */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
                 className="w-full h-full object-cover"
+                style={{ transform: 'scaleX(-1)' }}
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : 'Waiting...'}
               </div>
             </div>
 
-            {/* YOUR VIDEO (RIGHT) - THIS SHOULD SHOW YOUR CAMERA */}
+            {/* YOUR VIDEO - HD */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={localVideoRef}
@@ -272,6 +315,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 muted
                 playsInline
                 className="w-full h-full object-cover"
+                style={{ transform: 'scaleX(-1)' }}
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Off)'}
@@ -280,7 +324,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
-                    <p className="text-white text-xs">Starting camera...</p>
+                    <p className="text-white text-xs">Starting HD camera...</p>
                   </div>
                 </div>
               )}
