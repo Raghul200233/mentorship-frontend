@@ -10,28 +10,44 @@ export const useSocket = (sessionId: string, userId: string) => {
 
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
     
+    console.log('Connecting to socket server:', backendUrl);
+    
     const newSocket = io(backendUrl, {
       query: { sessionId, userId },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
+      console.log('✅ Socket connected');
       setIsConnected(true);
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
       setIsConnected(false);
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      setIsConnected(false);
+    });
+
+    newSocket.on('reconnect', (attemptNumber) => {
+      console.log('Socket reconnected after', attemptNumber, 'attempts');
+      setIsConnected(true);
     });
 
     setSocket(newSocket);
 
     return () => {
-      newSocket.disconnect();
+      if (newSocket) {
+        newSocket.disconnect();
+      }
     };
   }, [sessionId, userId]);
 

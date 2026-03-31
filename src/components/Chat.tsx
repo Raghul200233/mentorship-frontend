@@ -8,15 +8,7 @@ interface Message {
   timestamp: Date
 }
 
-interface ChatProps {
-  socket: any;
-  userId: string;
-  sessionId: string;
-  onClose?: () => void;
-  isModal?: boolean;
-}
-
-export function Chat({ socket, userId, sessionId, onClose, isModal }: ChatProps) {
+export function Chat({ socket, userId, sessionId }: any) {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [userName, setUserName] = useState('User')
@@ -46,7 +38,7 @@ export function Chat({ socket, userId, sessionId, onClose, isModal }: ChatProps)
   }, [messages])
 
   const sendMessage = () => {
-    if (!inputText.trim()) return
+    if (!inputText.trim() || !socket) return
 
     const message: Message = {
       id: Date.now().toString(),
@@ -67,17 +59,8 @@ export function Chat({ socket, userId, sessionId, onClose, isModal }: ChatProps)
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      {/* Header with X button - Always visible */}
-      <div className="bg-gray-700 p-4 border-b border-gray-600 flex justify-between items-center">
-        <h3 className="text-white font-semibold text-base">💬 Chat</h3>
-        {isModal && onClose && (
-          <button
-            onClick={onClose}
-            className="text-white bg-red-600 hover:bg-red-700 w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition"
-          >
-            ✕
-          </button>
-        )}
+      <div className="bg-gray-700 p-3 border-b border-gray-600">
+        <h3 className="text-white font-semibold text-sm">💬 Chat</h3>
       </div>
       
       <div className="flex-1 overflow-y-auto p-3 space-y-2">

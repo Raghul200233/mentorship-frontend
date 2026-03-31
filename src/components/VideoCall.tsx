@@ -14,15 +14,15 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
   const [localVideoReady, setLocalVideoReady] = useState(false)
   const [error, setError] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState('disconnected')
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
-  // Auto-start call when component mounts
   useEffect(() => {
-    // Auto-start video call when session loads
+    // Auto-start video call when component mounts
     startCall()
   }, [])
 
@@ -44,6 +44,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     setIsCallActive(false)
     setRemoteStreamActive(false)
     setLocalVideoReady(false)
+    setConnectionStatus('disconnected')
   }
 
   useEffect(() => {
@@ -115,13 +116,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     const pc = new RTCPeerConnection(configuration)
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
+      if (event.candidate && socket) {
         socket.emit('webrtc-ice-candidate', { sessionId, candidate: event.candidate })
       }
     }
 
     pc.oniceconnectionstatechange = () => {
       console.log('ICE state:', pc.iceConnectionState)
+      setConnectionStatus(pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
       }
@@ -172,7 +174,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
+      
+      if (socket) {
+        socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
+      }
 
       setIsCallActive(true)
       console.log('📞 Offer sent')
@@ -214,7 +219,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
-      socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
+      
+      if (socket) {
+        socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
+      }
 
       setIsCallActive(true)
       console.log('📞 Answer sent')
@@ -236,7 +244,19 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const endCall = () => {
     cleanupCall()
-    socket.emit('end-call', { sessionId })
+    if (socket) {
+      socket.emit('end-call', { sessionId })
+    }
+  }
+
+  const getStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'Connected'
+      case 'connecting': return 'Connecting...'
+      case 'disconnected': return 'Disconnected'
+      case 'failed': return 'Connection failed'
+      default: return 'Waiting...'
+    }
   }
 
   return (
@@ -258,7 +278,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
             className="w-full h-full object-cover"
           />
           <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-            {remoteStreamActive ? 'Peer' : 'Waiting...'}
+            {remoteStreamActive ? 'Peer' : getStatusText()}
           </div>
         </div>
 
