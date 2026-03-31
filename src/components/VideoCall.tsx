@@ -112,14 +112,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE state:', pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
       }
     }
 
     pc.ontrack = (event) => {
-      console.log('Received remote track')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -140,19 +138,24 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setError('')
       setLocalVideoReady(false)
       
+      console.log('Requesting camera and microphone...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
       })
       
+      console.log('Got stream, tracks:', stream.getTracks().length)
       localStreamRef.current = stream
       
+      // IMPORTANT: Set local video source
       if (localVideoRef.current) {
+        console.log('Setting local video srcObject')
         localVideoRef.current.srcObject = stream
         localVideoRef.current.onloadedmetadata = () => {
+          console.log('Local video loaded')
           setLocalVideoReady(true)
         }
-        localVideoRef.current.play()
+        localVideoRef.current.play().catch(e => console.log('Play error:', e))
       }
       
       setIsVideoEnabled(true)
@@ -167,7 +170,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
       setIsCallActive(true)
     } catch (error: any) {
-      console.error('Error:', error)
+      console.error('Error starting call:', error)
       setError('Please allow camera and microphone access')
     }
   }
@@ -177,12 +180,16 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setLocalVideoReady(false)
       
       if (!localStreamRef.current) {
+        console.log('Getting camera for offer...')
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: true, 
           audio: true 
         })
         localStreamRef.current = stream
+        
+        // IMPORTANT: Set local video source
         if (localVideoRef.current) {
+          console.log('Setting local video srcObject from offer')
           localVideoRef.current.srcObject = stream
           localVideoRef.current.onloadedmetadata = () => {
             setLocalVideoReady(true)
@@ -244,7 +251,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         <>
           {/* 2 VIDEO IMAGES - SIDE BY SIDE */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            {/* PEER VIDEO */}
+            {/* PEER VIDEO (LEFT) */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={remoteVideoRef}
@@ -257,7 +264,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               </div>
             </div>
 
-            {/* YOUR VIDEO */}
+            {/* YOUR VIDEO (RIGHT) - THIS SHOULD SHOW YOUR CAMERA */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={localVideoRef}
@@ -269,6 +276,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Off)'}
               </div>
+              {!localVideoReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
+                    <p className="text-white text-xs">Starting camera...</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
