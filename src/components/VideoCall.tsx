@@ -139,7 +139,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     try {
       setError('')
       setLocalVideoReady(false)
-      console.log('Starting call...')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
@@ -150,20 +149,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        
-        // Set video ready when metadata is loaded
         localVideoRef.current.onloadedmetadata = () => {
-          console.log('Local video metadata loaded')
           setLocalVideoReady(true)
         }
-        
-        // Also set ready when playing starts
-        localVideoRef.current.onplaying = () => {
-          console.log('Local video playing')
-          setLocalVideoReady(true)
-        }
-        
-        localVideoRef.current.play().catch(e => console.log('Play error:', e))
+        localVideoRef.current.play()
       }
       
       setIsVideoEnabled(true)
@@ -179,17 +168,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsCallActive(true)
     } catch (error: any) {
       console.error('Error:', error)
-      if (error.name === 'NotAllowedError') {
-        setError('Please allow camera and microphone access')
-      } else {
-        setError('Unable to access camera/microphone')
-      }
+      setError('Please allow camera and microphone access')
     }
   }
 
   const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
-      console.log('Processing offer...')
       setLocalVideoReady(false)
       
       if (!localStreamRef.current) {
@@ -200,18 +184,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         localStreamRef.current = stream
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
-          
           localVideoRef.current.onloadedmetadata = () => {
-            console.log('Local video metadata loaded')
             setLocalVideoReady(true)
           }
-          
-          localVideoRef.current.onplaying = () => {
-            console.log('Local video playing')
-            setLocalVideoReady(true)
-          }
-          
-          localVideoRef.current.play().catch(e => console.log('Play error:', e))
+          localVideoRef.current.play()
         }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
@@ -229,7 +205,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsCallActive(true)
     } catch (error) {
       console.error('Error handling offer:', error)
-      setError('Failed to connect to peer')
     }
   }
 
@@ -250,7 +225,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   return (
     <div className="bg-gray-800">
-      {/* Error Message */}
       {error && (
         <div className="p-3 bg-red-900/50 border-b border-red-500">
           <p className="text-red-400 text-sm text-center">{error}</p>
@@ -261,7 +235,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         <div className="p-6 text-center">
           <button
             onClick={startCall}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-semibold transition"
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-semibold"
           >
             Start Call
           </button>
@@ -270,7 +244,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         <>
           {/* 2 VIDEO IMAGES - SIDE BY SIDE */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            {/* PEER VIDEO (LEFT) */}
+            {/* PEER VIDEO */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={remoteVideoRef}
@@ -281,17 +255,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 {remoteStreamActive ? 'Peer' : 'Waiting...'}
               </div>
-              {!remoteStreamActive && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
-                    <p className="text-white text-xs">Connecting to peer...</p>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* YOUR VIDEO (RIGHT) */}
+            {/* YOUR VIDEO */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
               <video
                 ref={localVideoRef}
@@ -303,14 +269,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Off)'}
               </div>
-              {!localVideoReady && localStreamRef.current && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
-                    <p className="text-white text-xs">Starting camera...</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -318,27 +276,23 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
           <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
             <button
               onClick={toggleAudio}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                isAudioEnabled 
-                  ? 'bg-gray-700 hover:bg-gray-600' 
-                  : 'bg-red-600 hover:bg-red-700'
+              className={`px-4 py-2 rounded-full text-sm ${
+                isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
               {isAudioEnabled ? 'Mic On' : 'Mic Off'}
             </button>
             <button
               onClick={toggleVideo}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                isVideoEnabled 
-                  ? 'bg-gray-700 hover:bg-gray-600' 
-                  : 'bg-red-600 hover:bg-red-700'
+              className={`px-4 py-2 rounded-full text-sm ${
+                isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
               {isVideoEnabled ? 'Camera On' : 'Camera Off'}
             </button>
             <button
               onClick={endCall}
-              className="px-4 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition"
+              className="px-4 py-2 rounded-full bg-red-600 text-white text-sm"
             >
               End Call
             </button>
