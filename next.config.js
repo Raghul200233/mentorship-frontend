@@ -11,16 +11,26 @@ const nextConfig = {
     NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
   },
   webpack: (config, { isServer }) => {
+    // Handle Monaco Editor and Yjs
     if (!isServer) {
-      // Fix for yjs in browser
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         net: false,
         tls: false,
         crypto: false,
+        path: false,
+        os: false,
+        stream: false,
+        buffer: false,
       }
     }
+    
+    // Ignore CSS warnings from Monaco
+    config.module = config.module || {}
+    config.module.unknownContextCritical = false
+    config.module.exprContextCritical = false
+    
     return config
   },
 }
