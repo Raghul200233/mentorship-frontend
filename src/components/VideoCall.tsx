@@ -12,9 +12,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
-  const [connectionState, setConnectionState] = useState<string>('new')
-  const [error, setError] = useState<string>('')
-  const [localStreamReady, setLocalStreamReady] = useState(false)
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -23,9 +20,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const cleanupCall = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        track.stop()
-      })
+      localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
     if (peerConnectionRef.current) {
@@ -40,8 +35,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
     setIsCallActive(false)
     setRemoteStreamActive(false)
-    setConnectionState('closed')
-    setLocalStreamReady(false)
   }
 
   useEffect(() => {
@@ -102,21 +95,13 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' }
       ]
     })
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('webrtc-ice-candidate', { sessionId, candidate: event.candidate })
-      }
-    }
-
-    pc.oniceconnectionstatechange = () => {
-      setConnectionState(pc.iceConnectionState)
-      if (pc.iceConnectionState === 'connected') {
-        setRemoteStreamActive(true)
       }
     }
 
@@ -138,7 +123,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
   const startCall = async () => {
     try {
-      setError('')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
@@ -148,8 +132,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.play().catch(e => console.log(e))
-        setLocalStreamReady(true)
       }
       
       setIsVideoEnabled(true)
@@ -163,10 +145,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
 
       setIsCallActive(true)
-      setConnectionState('connecting')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error:', error)
-      setError('Please allow camera and microphone access')
+      alert('Please allow camera and microphone access')
     }
   }
 
@@ -180,8 +161,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         localStreamRef.current = stream
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
-          localVideoRef.current.play().catch(e => console.log(e))
-          setLocalStreamReady(true)
         }
         setIsVideoEnabled(true)
         setIsAudioEnabled(true)
@@ -196,7 +175,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
 
       setIsCallActive(true)
-      setConnectionState('connecting')
     } catch (error) {
       console.error('Error:', error)
     }
@@ -217,22 +195,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     socket.emit('end-call', { sessionId })
   }
 
-  const getStatusText = () => {
-    switch (connectionState) {
-      case 'connected': return 'Connected'
-      case 'connecting': return 'Connecting...'
-      default: return 'Not connected'
-    }
-  }
-
   return (
     <div className="bg-gray-800">
-      {error && (
-        <div className="p-2 bg-red-900/50 text-red-400 text-xs text-center">
-          {error}
-        </div>
-      )}
-
       {!isCallActive ? (
         <div className="p-6 text-center">
           <button
@@ -244,7 +208,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         </div>
       ) : (
         <>
-          {/* Video Grid */}
+          {/* 2 Video Images Side by Side */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
             {/* Remote Video */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
@@ -255,7 +219,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
                 className="w-full h-full object-cover"
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                {remoteStreamActive ? 'Peer' : getStatusText()}
+                {remoteStreamActive ? 'Peer' : 'Connecting...'}
               </div>
             </div>
 
@@ -271,11 +235,6 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                 You {!isVideoEnabled && '(Off)'}
               </div>
-              {!localStreamReady && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -283,25 +242,25 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
           <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
             <button
               onClick={toggleAudio}
-              className={`p-3 rounded-full ${
+              className={`p-2 px-4 rounded-full text-sm ${
                 isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
-              {isAudioEnabled ? '🎤' : '🔇'}
+              {isAudioEnabled ? 'Mic' : 'Mic Off'}
             </button>
             <button
               onClick={toggleVideo}
-              className={`p-3 rounded-full ${
+              className={`p-2 px-4 rounded-full text-sm ${
                 isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
               } text-white`}
             >
-              {isVideoEnabled ? '🎥' : '📷'}
+              {isVideoEnabled ? 'Camera' : 'Camera Off'}
             </button>
             <button
               onClick={endCall}
-              className="p-3 rounded-full bg-red-600 text-white"
+              className="p-2 px-4 rounded-full bg-red-600 text-white text-sm"
             >
-              📞
+              End Call
             </button>
           </div>
         </>
