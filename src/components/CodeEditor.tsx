@@ -1,15 +1,18 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 import MonacoEditor from '@monaco-editor/react'
 
+// Language configurations
 const LANGUAGE_CONFIGS = {
   javascript: { language: 'javascript', name: 'JavaScript' },
   python: { language: 'python', name: 'Python' },
+  c: { language: 'c', name: 'C' },
+  cpp: { language: 'cpp', name: 'C++' },
+  java: { language: 'java', name: 'Java' },
   html: { language: 'html', name: 'HTML' },
   css: { language: 'css', name: 'CSS' },
   typescript: { language: 'typescript', name: 'TypeScript' },
-  java: { language: 'java', name: 'Java' },
-  c: { language: 'c', name: 'C' },
-  cpp: { language: 'cpp', name: 'C++' },
   sql: { language: 'sql', name: 'SQL' },
   go: { language: 'go', name: 'Go' },
   rust: { language: 'rust', name: 'Rust' },
@@ -22,12 +25,12 @@ const LANGUAGE_CONFIGS = {
 const DEFAULT_CODE: Record<string, string> = {
   javascript: '// JavaScript Code\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();',
   python: '# Python Code\n\ndef hello():\n    print("Hello, World!")\n\nhello()',
+  c: '// C Code\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
+  cpp: '// C++ Code\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
+  java: '// Java Code\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
   html: '<!-- HTML Code -->\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>',
   css: '/* CSS Code */\nbody {\n    margin: 0;\n    padding: 20px;\n    font-family: Arial, sans-serif;\n}\n\nh1 {\n    color: #333;\n}',
   typescript: '// TypeScript Code\n\nfunction hello(name: string): void {\n    console.log(`Hello, ${name}!`);\n}\n\nhello("World");',
-  java: '// Java Code\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-  c: '// C Code\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
-  cpp: '// C++ Code\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
   sql: '-- SQL Code\nCREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100)\n);\n\nSELECT * FROM users;',
   go: '// Go Code\npackage main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}',
   rust: '// Rust Code\nfn main() {\n    println!("Hello, World!");\n}',
@@ -37,82 +40,186 @@ const DEFAULT_CODE: Record<string, string> = {
   kotlin: '// Kotlin Code\nfun main() {\n    println("Hello, World!")\n}',
 }
 
-export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
+interface CodeEditorProps {
+  socket: any;
+  code: string;
+  setCode: (code: string) => void;
+  sessionId: string;
+  language: string;
+  setLanguage: (lang: string) => void;
+}
+
+export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: CodeEditorProps) {
   const editorRef = useRef<any>(null)
-  const isUpdatingFromRemote = useRef(false)
-  const updateTimeoutRef = useRef<NodeJS.Timeout>()
+  const yjsProviderRef = useRef<any>(null)
+  const yDocRef = useRef<any>(null)
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting')
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
 
+  // Monitor online/offline status
   useEffect(() => {
-    if (!socket) return
-
-    const handleCodeUpdate = (data: { code: string, language: string }) => {
-      if (!isUpdatingFromRemote.current && editorRef.current) {
-        isUpdatingFromRemote.current = true
-        const currentPosition = editorRef.current.getPosition()
-        
-        editorRef.current.setValue(data.code)
-        setCode(data.code)
-        
-        if (data.language && data.language !== language) {
-          setLanguage(data.language)
-        }
-        
-        if (currentPosition) {
-          editorRef.current.setPosition(currentPosition)
-        }
-        
-        setTimeout(() => {
-          isUpdatingFromRemote.current = false
-        }, 50)
+    const handleOnline = () => {
+      setIsOnline(true)
+      if (yjsProviderRef.current) {
+        yjsProviderRef.current.connect()
       }
     }
-
-    socket.on('code-update', handleCodeUpdate)
-
+    const handleOffline = () => {
+      setIsOnline(false)
+      setSyncStatus('offline')
+    }
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
     return () => {
-      socket.off('code-update', handleCodeUpdate)
-      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
-  }, [socket, setCode, language, setLanguage])
+  }, [])
 
-  const handleEditorChange = useCallback((value: string | undefined) => {
-    if (value !== undefined && editorRef.current && !isUpdatingFromRemote.current) {
-      setCode(value)
+  // Initialize Yjs CRDT
+  useEffect(() => {
+    if (!sessionId) return
+
+    // Create Yjs document
+    const ydoc = new Y.Doc()
+    yDocRef.current = ydoc
+
+    // Get the shared text type
+    const ytext = ydoc.getText('codemirror')
+
+    // Set initial content if empty
+    if (ytext.toString() === '') {
+      ytext.insert(0, DEFAULT_CODE[language] || DEFAULT_CODE.javascript)
+    }
+
+    // Setup WebSocket provider
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
+    const wsUrl = backendUrl.replace('http', 'ws').replace('https', 'wss')
+    
+    // Dynamically import y-monaco to avoid SSR issues
+    let binding: any = null
+    
+    const setupBinding = async () => {
+      const { MonacoBinding } = await import('y-monaco')
       
-      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current)
-      updateTimeoutRef.current = setTimeout(() => {
-        if (socket) {
-          socket.emit('code-update', { sessionId, code: value, language })
-        }
-      }, 150)
+      if (editorRef.current && yDocRef.current) {
+        binding = new MonacoBinding(
+          ytext,
+          editorRef.current.getModel(),
+          new Set([editorRef.current]),
+          yjsProviderRef.current?.awareness
+        )
+      }
     }
-  }, [socket, sessionId, language, setCode])
+    
+    const provider = new WebsocketProvider(
+      `${wsUrl}/yjs`,
+      sessionId,
+      ydoc,
+      { connect: isOnline }
+    )
+    
+    yjsProviderRef.current = provider
 
+    // Track connection status
+    provider.on('status', (event: { status: string }) => {
+      console.log('Yjs connection status:', event.status)
+      if (event.status === 'connected') {
+        setSyncStatus('connected')
+        setupBinding()
+      } else if (event.status === 'connecting') {
+        setSyncStatus('connecting')
+      }
+    })
+
+    // Store the binding reference to clean up later
+    return () => {
+      if (binding) {
+        binding.destroy()
+      }
+      if (provider) {
+        provider.destroy()
+      }
+      if (ydoc) {
+        ydoc.destroy()
+      }
+    }
+  }, [sessionId, isOnline])
+
+  // Bind to Monaco editor when editor is ready
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor
-    if (code) {
-      editor.setValue(code)
+    
+    if (yDocRef.current && yjsProviderRef.current) {
+      const ytext = yDocRef.current.getText('codemirror')
+      
+      // Set initial content
+      if (editor.getValue() === '') {
+        editor.setValue(ytext.toString())
+      }
+      
+      // Setup binding after editor is ready
+      import('y-monaco').then(({ MonacoBinding }) => {
+        new MonacoBinding(
+          ytext,
+          editor.getModel(),
+          new Set([editor]),
+          yjsProviderRef.current?.awareness
+        )
+      })
     }
   }
 
+  // Handle language change
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage)
     const newCode = DEFAULT_CODE[newLanguage] || DEFAULT_CODE.javascript
-    setCode(newCode)
+    
+    if (yDocRef.current) {
+      const ytext = yDocRef.current.getText('codemirror')
+      ytext.delete(0, ytext.length)
+      ytext.insert(0, newCode)
+    }
+    
     if (editorRef.current) {
       editorRef.current.setValue(newCode)
     }
-    if (socket) {
-      socket.emit('code-update', { sessionId, code: newCode, language: newLanguage })
-    }
   }
+
+  // Update parent code state when Yjs changes
+  useEffect(() => {
+    if (!yDocRef.current) return
+    
+    const ytext = yDocRef.current.getText('codemirror')
+    
+    const observer = () => {
+      const newCode = ytext.toString()
+      setCode(newCode)
+    }
+    
+    ytext.observe(observer)
+    
+    return () => {
+      ytext.unobserve(observer)
+    }
+  }, [setCode])
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
       <div className="bg-gray-800 p-3 border-b border-gray-700 flex flex-wrap justify-between items-center gap-2 sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <h3 className="text-white font-semibold text-sm sm:text-base">✏️ Collaborative Code Editor</h3>
-          <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Real-time Sync</span>
+          <span className={`text-xs px-2 py-1 rounded ${
+            syncStatus === 'connected' 
+              ? 'bg-green-600' 
+              : syncStatus === 'connecting' 
+                ? 'bg-yellow-600' 
+                : 'bg-red-600'
+          } text-white`}>
+            {syncStatus === 'connected' ? '🟢 Live' : syncStatus === 'connecting' ? '🟡 Connecting' : '🔴 Offline'}
+          </span>
         </div>
         <div className="flex items-center gap-2 bg-gray-700 px-3 py-1.5 rounded-lg">
           <label className="text-gray-300 text-xs sm:text-sm font-medium">Language:</label>
@@ -134,7 +241,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
           height="100%"
           language={language}
           theme="vs-dark"
-          onChange={handleEditorChange}
           onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: false },
@@ -146,10 +252,18 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             formatOnPaste: true,
             formatOnType: true,
             readOnly: false,
-            cursorBlinking: 'smooth',
-            renderWhitespace: 'none',
           }}
         />
+        {syncStatus === 'offline' && (
+          <div className="absolute bottom-4 right-4 bg-yellow-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg">
+            🔌 Offline Mode - Changes will sync when online
+          </div>
+        )}
+        {syncStatus === 'connecting' && (
+          <div className="absolute bottom-4 right-4 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg">
+            🔄 Connecting to sync server...
+          </div>
+        )}
       </div>
     </div>
   )
