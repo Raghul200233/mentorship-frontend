@@ -12,13 +12,19 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
   const [remoteStreamActive, setRemoteStreamActive] = useState(false)
-  const [error, setError] = useState<string>('')
   const [localVideoReady, setLocalVideoReady] = useState(false)
+  const [error, setError] = useState('')
   
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+
+  // Auto-start call when component mounts
+  useEffect(() => {
+    // Auto-start video call when session loads
+    startCall()
+  }, [])
 
   const cleanupCall = () => {
     if (localStreamRef.current) {
@@ -45,10 +51,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
     const handleOffer = async (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
       if (data.fromUserId === userId) return
+      console.log('📞 Received offer')
       await handleOfferInternal(data.offer)
     }
 
     const handleAnswer = async (data: { answer: RTCSessionDescriptionInit }) => {
+      console.log('📞 Received answer')
       await handleAnswerInternal(data.answer)
     }
 
@@ -57,6 +65,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     const handlePeerEndedCall = () => {
+      console.log('Peer ended call')
       cleanupCall()
     }
 
@@ -112,12 +121,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected') {
         setRemoteStreamActive(true)
       }
     }
 
     pc.ontrack = (event) => {
+      console.log('Received remote track')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -136,26 +147,21 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const startCall = async () => {
     try {
       setError('')
-      setLocalVideoReady(false)
+      console.log('🎥 Starting video call...')
       
-      console.log('Requesting camera and microphone...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
       })
       
-      console.log('Got stream, tracks:', stream.getTracks().length)
       localStreamRef.current = stream
       
-      // IMPORTANT: Set local video source
       if (localVideoRef.current) {
-        console.log('Setting local video srcObject')
         localVideoRef.current.srcObject = stream
         localVideoRef.current.onloadedmetadata = () => {
-          console.log('Local video loaded')
           setLocalVideoReady(true)
         }
-        localVideoRef.current.play().catch(e => console.log('Play error:', e))
+        localVideoRef.current.play()
       }
       
       setIsVideoEnabled(true)
@@ -169,27 +175,28 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
 
       setIsCallActive(true)
+      console.log('📞 Offer sent')
     } catch (error: any) {
       console.error('Error starting call:', error)
-      setError('Please allow camera and microphone access')
+      if (error.name === 'NotAllowedError') {
+        setError('Please allow camera and microphone access')
+      } else {
+        setError('Unable to access camera/microphone')
+      }
     }
   }
 
   const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
-      setLocalVideoReady(false)
+      console.log('Processing offer...')
       
       if (!localStreamRef.current) {
-        console.log('Getting camera for offer...')
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: true, 
           audio: true 
         })
         localStreamRef.current = stream
-        
-        // IMPORTANT: Set local video source
         if (localVideoRef.current) {
-          console.log('Setting local video srcObject from offer')
           localVideoRef.current.srcObject = stream
           localVideoRef.current.onloadedmetadata = () => {
             setLocalVideoReady(true)
@@ -210,6 +217,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
 
       setIsCallActive(true)
+      console.log('📞 Answer sent')
     } catch (error) {
       console.error('Error handling offer:', error)
     }
@@ -218,6 +226,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const handleAnswerInternal = async (answer: RTCSessionDescriptionInit) => {
     if (!peerConnectionRef.current) return
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
+    console.log('Remote description set')
   }
 
   const handleIceCandidateInternal = async (candidate: RTCIceCandidateInit) => {
@@ -233,87 +242,66 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   return (
     <div className="bg-gray-800">
       {error && (
-        <div className="p-3 bg-red-900/50 border-b border-red-500">
-          <p className="text-red-400 text-sm text-center">{error}</p>
+        <div className="p-2 bg-red-900/50 text-red-400 text-xs text-center">
+          {error}
         </div>
       )}
 
-      {!isCallActive ? (
-        <div className="p-6 text-center">
-          <button
-            onClick={startCall}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-semibold"
-          >
-            Start Call
-          </button>
+      {/* 2 Video Images Side by Side */}
+      <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
+        {/* Peer Video */}
+        <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+            {remoteStreamActive ? 'Peer' : 'Waiting...'}
+          </div>
         </div>
-      ) : (
-        <>
-          {/* 2 VIDEO IMAGES - SIDE BY SIDE */}
-          <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            {/* PEER VIDEO (LEFT) */}
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                {remoteStreamActive ? 'Peer' : 'Waiting...'}
-              </div>
-            </div>
 
-            {/* YOUR VIDEO (RIGHT) - THIS SHOULD SHOW YOUR CAMERA */}
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                You {!isVideoEnabled && '(Off)'}
-              </div>
-              {!localVideoReady && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-1"></div>
-                    <p className="text-white text-xs">Starting camera...</p>
-                  </div>
-                </div>
-              )}
-            </div>
+        {/* Your Video */}
+        <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+            {localVideoReady ? 'You' : 'Starting camera...'}
           </div>
+        </div>
+      </div>
 
-          {/* CONTROLS */}
-          <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
-            <button
-              onClick={toggleAudio}
-              className={`px-4 py-2 rounded-full text-sm ${
-                isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
-              } text-white`}
-            >
-              {isAudioEnabled ? 'Mic On' : 'Mic Off'}
-            </button>
-            <button
-              onClick={toggleVideo}
-              className={`px-4 py-2 rounded-full text-sm ${
-                isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
-              } text-white`}
-            >
-              {isVideoEnabled ? 'Camera On' : 'Camera Off'}
-            </button>
-            <button
-              onClick={endCall}
-              className="px-4 py-2 rounded-full bg-red-600 text-white text-sm"
-            >
-              End Call
-            </button>
-          </div>
-        </>
-      )}
+      {/* Controls */}
+      <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
+        <button
+          onClick={toggleAudio}
+          className={`px-4 py-2 rounded-full text-sm ${
+            isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
+          } text-white`}
+        >
+          {isAudioEnabled ? 'Mic On' : 'Mic Off'}
+        </button>
+        <button
+          onClick={toggleVideo}
+          className={`px-4 py-2 rounded-full text-sm ${
+            isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
+          } text-white`}
+        >
+          {isVideoEnabled ? 'Camera On' : 'Camera Off'}
+        </button>
+        <button
+          onClick={endCall}
+          className="px-4 py-2 rounded-full bg-red-600 text-white text-sm"
+        >
+          End Call
+        </button>
+      </div>
     </div>
   )
 }
