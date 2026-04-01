@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react'
 export default function SessionPage({ session }: any) {
   const router = useRouter()
   const { id } = router.query
-  const { socket, isConnected } = useSocket(id as string, session?.user?.id)
+  const { socket, isConnected, isWaking } = useSocket(id as string, session?.user?.id)
   const [code, setCode] = useState('// Start coding here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n')
   const [language, setLanguage] = useState('javascript')
   const [copied, setCopied] = useState(false)
@@ -171,10 +171,15 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* ── Connection indicator (shown only after 2-second delay) ─────────── */}
-      {showConnecting && !isConnected && (
+      {/* ── Connection indicator ──────────────────────────────────────────── */}
+      {isWaking && (
+        <div className="fixed bottom-4 left-4 bg-orange-600 text-white px-3 py-1 rounded-lg text-xs z-50 flex items-center gap-2">
+          <span className="animate-spin inline-block">⟳</span> Starting server… (first load may take ~30s)
+        </div>
+      )}
+      {!isWaking && showConnecting && !isConnected && (
         <div className="fixed bottom-4 left-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50 flex items-center gap-2">
-          <span className="animate-spin inline-block">⟳</span> Connecting…
+          <span className="animate-spin inline-block">⟳</span> Reconnecting…
         </div>
       )}
     </Layout>
