@@ -18,7 +18,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
   const yDocRef = useRef<any>(null)
   const [syncStatus, setSyncStatus] = useState('connecting')
   const [isOnline, setIsOnline] = useState(true)
-  const [editorValue, setEditorValue] = useState('')
   const isRemoteUpdate = useRef(false)
 
   // Monitor online/offline
@@ -48,11 +47,19 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       ytext.insert(0, defaultCode)
     }
 
-    // Setup WebSocket provider
+    // Correct WebSocket URL format - use query parameter, not path
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
     const wsUrl = backendUrl.replace('http', 'ws').replace('https', 'wss')
+    const fullUrl = `${wsUrl}/yjs?sessionId=${sessionId}`
     
-    const provider = new WebsocketProvider(`${wsUrl}/yjs`, sessionId, ydoc, { connect: isOnline })
+    console.log('Yjs connecting to:', fullUrl)
+    
+    const provider = new WebsocketProvider(
+      `${wsUrl}/yjs`,
+      sessionId,
+      ydoc,
+      { connect: isOnline }
+    )
     yjsProvider.current = provider
 
     // Track connection status
@@ -61,11 +68,14 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       setSyncStatus(event.status)
     })
 
+    provider.on('error', (err: any) => {
+      console.error('Yjs error:', err)
+    })
+
     // Handle Yjs changes
     const handleYjsChange = () => {
       if (!isRemoteUpdate.current && editorRef.current) {
         const newValue = ytext.toString()
-        setEditorValue(newValue)
         setCode(newValue)
       }
     }
@@ -87,7 +97,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       // Update Yjs
       ytext.delete(0, ytext.length)
       ytext.insert(0, value)
-      setEditorValue(value)
       setCode(value)
       setTimeout(() => {
         isRemoteUpdate.current = false
@@ -104,7 +113,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       const ytext = yDocRef.current.getText('codemirror')
       const initialValue = ytext.toString()
       editor.setValue(initialValue)
-      setEditorValue(initialValue)
       setCode(initialValue)
     }
   }
@@ -128,7 +136,6 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       editorRef.current.setValue(newCode)
     }
     setCode(newCode)
-    setEditorValue(newCode)
   }
 
   const getStatusColor = () => {
@@ -167,9 +174,8 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
           height="100%"
           language={language}
           theme="vs-dark"
-          value={editorValue}
-          onChange={handleEditorChange}
           onMount={handleEditorMount}
+          onChange={handleEditorChange}
           options={{
             minimap: { enabled: false },
             fontSize: 14,
