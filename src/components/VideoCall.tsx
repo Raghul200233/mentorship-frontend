@@ -22,12 +22,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
-  // Listen for existing users in session
+  // Listen for other users
   useEffect(() => {
     if (!socket) return
     
     const handleExistingUsers = (data: { users: string[] }) => {
-      console.log('Existing users in session:', data.users)
+      console.log('Existing users:', data.users)
       if (data.users.length > 0) {
         setOtherUserId(data.users[0])
       }
@@ -52,9 +52,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const cleanupCall = () => {
     console.log('Cleaning up call...')
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        track.stop()
-      })
+      localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
     if (peerConnectionRef.current) {
@@ -79,8 +77,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     const handleOffer = async (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
       if (data.fromUserId === userId) return
       console.log('📞 Received offer from:', data.fromUserId)
-      setOtherUserId(data.fromUserId)
-      await handleOfferInternal(data.offer, data.fromUserId)
+      await handleOfferInternal(data.offer)
     }
 
     const handleAnswer = async (data: { answer: RTCSessionDescriptionInit }) => {
@@ -100,6 +97,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       }
       setRemoteStreamActive(false)
       setConnectionStatus('disconnected')
+      setIsCallActive(false)
     }
 
     socket.on('webrtc-offer', handleOffer)
@@ -122,6 +120,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled
         setIsVideoEnabled(!isVideoEnabled)
+        console.log('Video toggled:', !isVideoEnabled)
       }
     }
   }
@@ -132,11 +131,12 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (audioTrack) {
         audioTrack.enabled = !isAudioEnabled
         setIsAudioEnabled(!isAudioEnabled)
+        console.log('Audio toggled:', !isAudioEnabled)
       }
     }
   }
 
-  const createPeerConnection = (targetUserId: string) => {
+  const createPeerConnection = () => {
     const configuration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -151,8 +151,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (event.candidate && socket) {
         socket.emit('webrtc-ice-candidate', { 
           sessionId, 
-          candidate: event.candidate,
-          targetUserId 
+          candidate: event.candidate
         })
       }
     }
@@ -183,25 +182,22 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   }
 
   const startCall = async () => {
-    if (!otherUserId) {
-      setError('Waiting for other user to join...')
-      return
-    }
-    
     try {
       setError('')
-      console.log('🎥 Starting video call with:', otherUserId)
+      console.log('🎥 Starting video call...')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: true, 
         audio: true 
       })
       
+      console.log('Got stream, tracks:', stream.getTracks().map(t => t.kind))
       localStreamRef.current = stream
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
         localVideoRef.current.onloadedmetadata = () => {
+          console.log('Local video loaded')
           setLocalVideoReady(true)
         }
         localVideoRef.current.play()
@@ -210,7 +206,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       setIsVideoEnabled(true)
       setIsAudioEnabled(true)
 
-      const pc = createPeerConnection(otherUserId)
+      const pc = createPeerConnection()
       peerConnectionRef.current = pc
 
       const offer = await pc.createOffer()
@@ -219,10 +215,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (socket) {
         socket.emit('webrtc-offer', { 
           sessionId, 
-          offer: pc.localDescription,
-          targetUserId: otherUserId
+          offer: pc.localDescription
         })
-        console.log('📞 Offer sent to:', otherUserId)
+        console.log('📞 Offer sent')
       }
 
       setIsCallActive(true)
@@ -236,9 +231,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
   }
 
-  const handleOfferInternal = async (offer: RTCSessionDescriptionInit, fromUserId: string) => {
+  const handleOfferInternal = async (offer: RTCSessionDescriptionInit) => {
     try {
-      console.log('Processing offer from:', fromUserId)
+      console.log('Processing offer...')
       
       if (!localStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -257,7 +252,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         setIsAudioEnabled(true)
       }
 
-      const pc = createPeerConnection(fromUserId)
+      const pc = createPeerConnection()
       peerConnectionRef.current = pc
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
@@ -268,10 +263,9 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (socket) {
         socket.emit('webrtc-answer', { 
           sessionId, 
-          answer: pc.localDescription,
-          targetUserId: fromUserId
+          answer: pc.localDescription
         })
-        console.log('📞 Answer sent to:', fromUserId)
+        console.log('📞 Answer sent')
       }
 
       setIsCallActive(true)
@@ -294,8 +288,8 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const endCall = () => {
     console.log('📞 Ending call')
     cleanupCall()
-    if (socket && otherUserId) {
-      socket.emit('end-call', { sessionId, targetUserId: otherUserId })
+    if (socket) {
+      socket.emit('end-call', { sessionId })
     }
   }
 
@@ -321,19 +315,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         <div className="p-6 text-center">
           <button
             onClick={startCall}
-            disabled={!otherUserId}
-            className={`px-6 py-3 rounded-full font-semibold text-base ${
-              otherUserId 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            }`}
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full font-semibold text-base"
           >
             📞 Start Call
           </button>
           <p className="text-gray-400 text-xs mt-3">
             {otherUserId 
-              ? 'Click to start video call' 
-              : 'Waiting for other user to join...'}
+              ? `Click to start call with peer` 
+              : 'Click to start your camera (peer will join later)'}
           </p>
         </div>
       ) : (
