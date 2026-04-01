@@ -21,14 +21,19 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
+  // Auto-start video call when component mounts
   useEffect(() => {
-    // Auto-start video call when component mounts
+    console.log('VideoCall component mounted, starting call...')
     startCall()
   }, [])
 
   const cleanupCall = () => {
+    console.log('Cleaning up call...')
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop()
+        console.log('Stopped track:', track.kind)
+      })
       localStreamRef.current = null
     }
     if (peerConnectionRef.current) {
@@ -48,11 +53,14 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   }
 
   useEffect(() => {
-    if (!socket) return
+    if (!socket) {
+      console.log('No socket available')
+      return
+    }
 
     const handleOffer = async (data: { offer: RTCSessionDescriptionInit; fromUserId: string }) => {
       if (data.fromUserId === userId) return
-      console.log('📞 Received offer')
+      console.log('📞 Received offer from:', data.fromUserId)
       await handleOfferInternal(data.offer)
     }
 
@@ -62,6 +70,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     const handleIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
+      console.log('📞 Received ICE candidate')
       await handleIceCandidateInternal(data.candidate)
     }
 
@@ -90,6 +99,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled
         setIsVideoEnabled(!isVideoEnabled)
+        console.log('Video toggled:', !isVideoEnabled)
       }
     }
   }
@@ -100,6 +110,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       if (audioTrack) {
         audioTrack.enabled = !isAudioEnabled
         setIsAudioEnabled(!isAudioEnabled)
+        console.log('Audio toggled:', !isAudioEnabled)
       }
     }
   }
@@ -117,6 +128,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
+        console.log('📡 Sending ICE candidate')
         socket.emit('webrtc-ice-candidate', { sessionId, candidate: event.candidate })
       }
     }
@@ -130,7 +142,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     }
 
     pc.ontrack = (event) => {
-      console.log('Received remote track')
+      console.log('📺 Received remote track')
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
         setRemoteStreamActive(true)
@@ -140,6 +152,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!)
+        console.log('Added track:', track.kind)
       })
     }
 
@@ -156,11 +169,13 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
         audio: true 
       })
       
+      console.log('Got stream, tracks:', stream.getTracks().map(t => t.kind))
       localStreamRef.current = stream
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
         localVideoRef.current.onloadedmetadata = () => {
+          console.log('Local video loaded')
           setLocalVideoReady(true)
         }
         localVideoRef.current.play()
@@ -177,10 +192,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       if (socket) {
         socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
+        console.log('📞 Offer sent')
       }
 
       setIsCallActive(true)
-      console.log('📞 Offer sent')
     } catch (error: any) {
       console.error('Error starting call:', error)
       if (error.name === 'NotAllowedError') {
@@ -222,10 +237,10 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
       
       if (socket) {
         socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
+        console.log('📞 Answer sent')
       }
 
       setIsCallActive(true)
-      console.log('📞 Answer sent')
     } catch (error) {
       console.error('Error handling offer:', error)
     }
@@ -243,6 +258,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
   }
 
   const endCall = () => {
+    console.log('📞 Ending call')
     cleanupCall()
     if (socket) {
       socket.emit('end-call', { sessionId })
@@ -292,7 +308,7 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: VideoCallProp
             className="w-full h-full object-cover"
           />
           <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-            {localVideoReady ? 'You' : 'Starting camera...'}
+            {localVideoReady ? 'You' : 'Starting...'}
           </div>
         </div>
       </div>
