@@ -11,12 +11,16 @@ export function VideoCall({ socket, userId, sessionId }: any) {
   const localVideo = useRef<HTMLVideoElement>(null)
   const remoteVideo = useRef<HTMLVideoElement>(null)
   const pc = useRef<RTCPeerConnection | null>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
 
   const getMedia = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       setLocalStream(stream)
-      if (localVideo.current) localVideo.current.srcObject = stream
+      localStreamRef.current = stream
+      if (localVideo.current) {
+        localVideo.current.srcObject = stream
+      }
       return stream
     } catch (err) {
       console.error('Camera error:', err)
@@ -25,9 +29,13 @@ export function VideoCall({ socket, userId, sessionId }: any) {
     }
   }
 
-  const createPeer = () => {
+  // Accept stream directly to avoid stale closure problem
+  const createPeer = (stream: MediaStream) => {
     const peer = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
     })
 
     peer.onicecandidate = (e) => {
@@ -37,17 +45,23 @@ export function VideoCall({ socket, userId, sessionId }: any) {
     }
 
     peer.oniceconnectionstatechange = () => {
+      console.log('ICE state:', peer.iceConnectionState)
       setStatus(peer.iceConnectionState)
     }
 
     peer.ontrack = (e) => {
-      setRemoteStream(e.streams[0])
-      if (remoteVideo.current) remoteVideo.current.srcObject = e.streams[0]
+      console.log('Got remote track', e.streams)
+      const remote = e.streams[0]
+      setRemoteStream(remote)
+      if (remoteVideo.current) {
+        remoteVideo.current.srcObject = remote
+      }
     }
 
-    if (localStream) {
-      localStream.getTracks().forEach(track => peer.addTrack(track, localStream))
-    }
+    // Add all tracks from the provided stream
+    stream.getTracks().forEach(track => {
+      peer.addTrack(track, stream)
+    })
 
     return peer
   }
@@ -56,13 +70,13 @@ export function VideoCall({ socket, userId, sessionId }: any) {
     const stream = await getMedia()
     if (!stream) return
 
-    const peer = createPeer()
+    const peer = createPeer(stream)
     pc.current = peer
 
     const offer = await peer.createOffer()
     await peer.setLocalDescription(offer)
     socket.emit('webrtc-offer', { offer })
-    
+
     setIsActive(true)
   }
 
@@ -71,18 +85,18 @@ export function VideoCall({ socket, userId, sessionId }: any) {
 
     const handleOffer = async ({ offer, fromUserId }: any) => {
       if (fromUserId === userId) return
-      
+
       const stream = await getMedia()
       if (!stream) return
 
-      const peer = createPeer()
+      const peer = createPeer(stream)
       pc.current = peer
 
       await peer.setRemoteDescription(new RTCSessionDescription(offer))
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
       socket.emit('webrtc-answer', { answer })
-      
+
       setIsActive(true)
     }
 
@@ -93,8 +107,12 @@ export function VideoCall({ socket, userId, sessionId }: any) {
     }
 
     const handleIce = async ({ candidate }: any) => {
-      if (pc.current) {
-        await pc.current.addIceCandidate(new RTCIceCandidate(candidate))
+      if (pc.current && candidate) {
+        try {
+          await pc.current.addIceCandidate(new RTCIceCandidate(candidate))
+        } catch (err) {
+          console.error('ICE candidate error:', err)
+        }
       }
     }
 
@@ -119,8 +137,9 @@ export function VideoCall({ socket, userId, sessionId }: any) {
   }, [socket, userId])
 
   const toggleVideo = () => {
-    if (localStream) {
-      const track = localStream.getVideoTracks()[0]
+    const stream = localStreamRef.current
+    if (stream) {
+      const track = stream.getVideoTracks()[0]
       if (track) {
         track.enabled = !videoEnabled
         setVideoEnabled(!videoEnabled)
@@ -129,8 +148,9 @@ export function VideoCall({ socket, userId, sessionId }: any) {
   }
 
   const toggleAudio = () => {
-    if (localStream) {
-      const track = localStream.getAudioTracks()[0]
+    const stream = localStreamRef.current
+    if (stream) {
+      const track = stream.getAudioTracks()[0]
       if (track) {
         track.enabled = !audioEnabled
         setAudioEnabled(!audioEnabled)
@@ -143,21 +163,24 @@ export function VideoCall({ socket, userId, sessionId }: any) {
       pc.current.close()
       pc.current = null
     }
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop())
+    const stream = localStreamRef.current
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop())
+      localStreamRef.current = null
       setLocalStream(null)
     }
     if (localVideo.current) localVideo.current.srcObject = null
     if (remoteVideo.current) remoteVideo.current.srcObject = null
     setRemoteStream(null)
     setIsActive(false)
+    setStatus('disconnected')
     socket.emit('end-call', {})
   }
 
   const getStatusText = () => {
     if (status === 'connected') return 'Connected'
-    if (status === 'connecting') return 'Connecting...'
-    return 'Disconnected'
+    if (status === 'connecting' || status === 'checking') return 'Connecting...'
+    return 'Waiting for peer...'
   }
 
   return (
@@ -166,7 +189,7 @@ export function VideoCall({ socket, userId, sessionId }: any) {
         <div className="p-6 text-center">
           <button
             onClick={startCall}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full font-semibold"
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full font-semibold transition-colors"
           >
             📞 Start Call
           </button>
@@ -174,27 +197,61 @@ export function VideoCall({ socket, userId, sessionId }: any) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            <div className="relative bg-black rounded-lg aspect-video">
-              <video ref={remoteVideo} autoPlay playsInline className="w-full h-full object-cover" />
+            {/* Remote video */}
+            <div className="relative bg-black rounded-lg aspect-video overflow-hidden">
+              <video
+                ref={remoteVideo}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              {!remoteStream && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-gray-400 text-xs">{getStatusText()}</p>
+                </div>
+              )}
               <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                 {remoteStream ? 'Peer' : getStatusText()}
               </div>
             </div>
-            <div className="relative bg-black rounded-lg aspect-video">
-              <video ref={localVideo} autoPlay muted playsInline className="w-full h-full object-cover" />
+
+            {/* Local video */}
+            <div className="relative bg-black rounded-lg aspect-video overflow-hidden">
+              <video
+                ref={localVideo}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              {!videoEnabled && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                  <p className="text-gray-400 text-xs">Camera Off</p>
+                </div>
+              )}
               <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                 You {!videoEnabled && '(Off)'}
               </div>
             </div>
           </div>
-          <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t">
-            <button onClick={toggleAudio} className={`px-4 py-2 rounded-full ${audioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white`}>
+
+          <div className="flex justify-center gap-3 p-3 bg-gray-800 border-t border-gray-700">
+            <button
+              onClick={toggleAudio}
+              className={`px-4 py-2 rounded-full ${audioEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'} text-white text-sm transition-colors`}
+            >
               {audioEnabled ? '🎤 Mic On' : '🔇 Mic Off'}
             </button>
-            <button onClick={toggleVideo} className={`px-4 py-2 rounded-full ${videoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white`}>
-              {videoEnabled ? '🎥 Camera On' : '📷 Camera Off'}
+            <button
+              onClick={toggleVideo}
+              className={`px-4 py-2 rounded-full ${videoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'} text-white text-sm transition-colors`}
+            >
+              {videoEnabled ? '🎥 Cam On' : '📷 Cam Off'}
             </button>
-            <button onClick={endCall} className="px-4 py-2 rounded-full bg-red-600 text-white">
+            <button
+              onClick={endCall}
+              className="px-4 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm transition-colors"
+            >
               📞 End Call
             </button>
           </div>
