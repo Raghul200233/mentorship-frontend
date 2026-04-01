@@ -4,7 +4,7 @@ import { VideoCall } from '@/components/VideoCall'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useSocket } from '@/hooks/useSocket'
 import { useRouter } from 'next/router'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function SessionPage({ session }: any) {
   const router = useRouter()
@@ -16,20 +16,39 @@ export default function SessionPage({ session }: any) {
   const [showChat, setShowChat] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
+  // Only show "Connecting…" after 2 s so it doesn't flash on first render
+  const [showConnecting, setShowConnecting] = useState(false)
+  const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
+    if (!isConnected) {
+      connectTimer.current = setTimeout(() => setShowConnecting(true), 2000)
+    } else {
+      if (connectTimer.current) clearTimeout(connectTimer.current)
+      setShowConnecting(false)
     }
+    return () => { if (connectTimer.current) clearTimeout(connectTimer.current) }
+  }, [isConnected])
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
   useEffect(() => {
-    if (!session) {
-      router.push('/')
-    }
+    if (!session) router.push('/')
   }, [session, router])
+
+  // Stop any lingering camera/mic tracks when leaving the page
+  useEffect(() => {
+    const stopCamera = () => {
+      navigator.mediaDevices.enumerateDevices().catch(() => {})
+      // Actual track stopping is handled inside VideoCall's own unmount
+    }
+    return () => { stopCamera() }
+  }, [])
 
   const copyInviteLink = () => {
     const link = `${window.location.origin}/session/${id}`
@@ -42,41 +61,41 @@ export default function SessionPage({ session }: any) {
     return (
       <Layout session={session}>
         <div className="flex items-center justify-center h-full">
-          <div className="text-white">Loading...</div>
+          <div className="text-white">Loading…</div>
         </div>
       </Layout>
     )
   }
 
-  const isMentor = session.user.user_metadata?.role === 'mentor'
+  const isMentor  = session.user.user_metadata?.role === 'mentor'
   const inviteLink = `${window.location.origin}/session/${id}`
 
   return (
     <Layout session={session}>
-      {/* Desktop View */}
+      {/* ── Desktop ─────────────────────────────────────────────────────────── */}
       {!isMobile && (
         <div className="h-screen flex overflow-hidden">
-          {/* Left - Code Editor */}
-          <div className="w-2/3 border-r border-gray-700">
-            <CodeEditor 
-              socket={socket} 
-              code={code} 
-              setCode={setCode} 
+          {/* Code editor — left 2/3 */}
+          <div className="w-2/3 border-r border-gray-700 min-h-0">
+            <CodeEditor
+              socket={socket}
+              code={code}
+              setCode={setCode}
               sessionId={id as string}
               language={language}
               setLanguage={setLanguage}
             />
           </div>
-          
-          {/* Right - Chat and Video */}
-          <div className="w-1/3 flex flex-col">
-            <div className="h-1/2 border-b border-gray-700">
+
+          {/* Chat + Video — right 1/3 */}
+          <div className="w-1/3 flex flex-col min-h-0">
+            <div className="flex-1 min-h-0 border-b border-gray-700">
               <Chat socket={socket} userId={session.user.id} sessionId={id as string} />
             </div>
-            <div className="h-1/2">
-              <VideoCall 
-                socket={socket} 
-                userId={session.user.id} 
+            <div className="shrink-0">
+              <VideoCall
+                socket={socket}
+                userId={session.user.id}
                 sessionId={id as string}
                 isMentor={isMentor}
               />
@@ -85,60 +104,54 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* Mobile View */}
+      {/* ── Mobile ──────────────────────────────────────────────────────────── */}
       {isMobile && (
         <div className="h-screen flex flex-col bg-gray-900">
-          {/* Top - Copy Link Bar (always visible for mentor) */}
           {isMentor && (
-            <div className="bg-blue-900/50 p-3 flex justify-between items-center border-b border-gray-700">
-              <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">
-                {inviteLink}
-              </code>
-              <button
-                onClick={copyInviteLink}
-                className="bg-blue-600 text-white px-3 py-1 rounded text-xs ml-2"
-              >
+            <div className="bg-blue-900/50 p-3 flex justify-between items-center border-b border-gray-700 shrink-0">
+              <code className="bg-gray-800 px-2 py-1 rounded text-xs text-gray-300 truncate flex-1">{inviteLink}</code>
+              <button onClick={copyInviteLink} className="bg-blue-600 text-white px-3 py-1 rounded text-xs ml-2">
                 {copied ? '✓' : 'Copy'}
               </button>
             </div>
           )}
 
-          {/* Code Editor Section */}
           <div className="flex-1 min-h-0">
-            <CodeEditor 
-              socket={socket} 
-              code={code} 
-              setCode={setCode} 
+            <CodeEditor
+              socket={socket}
+              code={code}
+              setCode={setCode}
               sessionId={id as string}
               language={language}
               setLanguage={setLanguage}
             />
           </div>
 
-          {/* Video Call Section - Bottom */}
-          <div className="bg-gray-800 border-t border-gray-700">
-            <VideoCall 
-              socket={socket} 
-              userId={session.user.id} 
+          <div className="shrink-0 bg-gray-800 border-t border-gray-700">
+            <VideoCall
+              socket={socket}
+              userId={session.user.id}
               sessionId={id as string}
               isMentor={isMentor}
             />
           </div>
 
-          {/* Floating Chat Button */}
-          <button
-            onClick={() => setShowChat(true)}
-            className="fixed bottom-4 right-4 bg-green-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-30"
-          >
-            💬
-          </button>
+          {/* Floating chat button */}
+          {!showChat && (
+            <button
+              onClick={() => setShowChat(true)}
+              className="fixed bottom-4 right-4 bg-green-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-30"
+            >
+              💬
+            </button>
+          )}
 
-          {/* Chat Modal - Full screen with X button */}
+          {/* Chat modal */}
           {showChat && (
             <div className="fixed inset-0 z-50 bg-gray-900">
-              <Chat 
-                socket={socket} 
-                userId={session.user.id} 
+              <Chat
+                socket={socket}
+                userId={session.user.id}
                 sessionId={id as string}
                 onClose={() => setShowChat(false)}
                 isModal={true}
@@ -148,25 +161,20 @@ export default function SessionPage({ session }: any) {
         </div>
       )}
 
-      {/* Desktop Copy Link Bar */}
+      {/* ── Desktop invite bar ───────────────────────────────────────────────── */}
       {!isMobile && isMentor && (
         <div className="fixed top-16 right-4 z-20 bg-gray-800 rounded-lg shadow-lg p-2 flex items-center gap-2">
-          <code className="text-xs text-gray-300 max-w-xs truncate">
-            {inviteLink}
-          </code>
-          <button
-            onClick={copyInviteLink}
-            className="bg-blue-600 text-white px-2 py-1 rounded text-xs"
-          >
+          <code className="text-xs text-gray-300 max-w-xs truncate">{inviteLink}</code>
+          <button onClick={copyInviteLink} className="bg-blue-600 text-white px-2 py-1 rounded text-xs">
             {copied ? '✓' : 'Copy Link'}
           </button>
         </div>
       )}
 
-      {/* Connection Status */}
-      {!isConnected && (
-        <div className="fixed bottom-4 left-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50">
-          Connecting...
+      {/* ── Connection indicator (shown only after 2-second delay) ─────────── */}
+      {showConnecting && !isConnected && (
+        <div className="fixed bottom-4 left-4 bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs z-50 flex items-center gap-2">
+          <span className="animate-spin inline-block">⟳</span> Connecting…
         </div>
       )}
     </Layout>

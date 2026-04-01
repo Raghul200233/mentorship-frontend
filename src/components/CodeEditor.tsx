@@ -42,17 +42,17 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       setSyncStatus(s === 'connected' ? 'connected' : s === 'error' ? 'offline' : 'connecting')
     })
 
-    // ── 3. Listen for remote (and initial) doc changes → update editor ──────
-    ytext.observe((_event, transaction) => {
-      // transaction.origin === REMOTE_ORIGIN means it came from the server
-      // transaction.origin === null means it's local (from handleEditorChange)
+    // ── 3. Listen for Yjs text changes → update Monaco editor ───────────────
+    // In Yjs 13.x, observe() provides a single YTextEvent argument.
+    // event.transaction.origin tells us whether the change is local or remote.
+    ytext.observe((event) => {
       const newValue = ytext.toString()
-      const isRemote = transaction.origin === REMOTE_ORIGIN
+      const isRemote = event.transaction.origin === REMOTE_ORIGIN
 
       if (isRemote && editorRef.current) {
         const currentValue = editorRef.current.getValue()
         if (currentValue !== newValue) {
-          // Tell handleEditorChange to ignore this synthetic value change
+          // Prevent handleEditorChange from re-sending this value back to Yjs
           applyingRemote.current = true
           editorRef.current.setValue(newValue)
           applyingRemote.current = false
