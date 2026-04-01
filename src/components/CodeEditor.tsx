@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 import MonacoEditor from '@monaco-editor/react'
-import { CustomWebsocketProvider, REMOTE_ORIGIN } from '@/utils/yjsProvider'
 
 const LANGUAGE_CONFIGS: Record<string, { name: string; default: string }> = {
   javascript: { name: 'JavaScript', default: '// JavaScript\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();' },
@@ -12,148 +12,166 @@ const LANGUAGE_CONFIGS: Record<string, { name: string; default: string }> = {
   cpp:        { name: 'C++',        default: '// C++\n#include <iostream>\n\nint main() {\n  std::cout << "Hello, World!" << std::endl;\n  return 0;\n}' },
 }
 
-export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
-  const editorRef = useRef<any>(null)
-  const yjsProvider = useRef<CustomWebsocketProvider | null>(null)
-  const yDocRef = useRef<Y.Doc | null>(null)
-  const [syncStatus, setSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting')
+interface CodeEditorProps {
+  socket: any
+  code: string
+  setCode: (v: string) => void
+  sessionId: string
+  language: string
+  setLanguage: (l: string) => void
+}
 
-  // Track whether we are currently applying a remote update to the editor
-  // so handleEditorChange doesn't re-send it back to the server
+export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: CodeEditorProps) {
+  const editorRef       = useRef<any>(null)
+  const providerRef     = useRef<WebsocketProvider | null>(null)
+  const yDocRef         = useRef<Y.Doc | null>(null)
+  const [syncStatus, setSyncStatus] = useState<'live' | 'connecting' | 'offline'>('connecting')
+
+  // Prevent echo: set true while we're pushing a Yjs update into Monaco
   const applyingRemote = useRef(false)
 
+  // ── Set up Yjs + WebsocketProvider ──────────────────────────────────────
   useEffect(() => {
     if (!sessionId) return
 
-    // ── 1. Create Yjs document ──────────────────────────────────────────────
-    const ydoc = new Y.Doc()
+    const ydoc  = new Y.Doc()
     yDocRef.current = ydoc
-    const ytext = ydoc.getText('codemirror')
+    const ytext = ydoc.getText('monaco')
 
-    // ── 2. Connect to backend Yjs WebSocket ─────────────────────────────────
+    // Build ws URL: wss://backend.com/yjs/<sessionId>
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
-    const wsUrl = backendUrl.replace(/^http/, 'ws').replace(/^https/, 'wss')
-    const provider = new CustomWebsocketProvider(wsUrl, sessionId, ydoc)
-    yjsProvider.current = provider
+    const wsBase = backendUrl.replace(/^http(s?)/, 'ws$1')
 
-    provider.on('status', (event: any) => {
-      const s = event.status
-      console.log('[CodeEditor] Yjs status:', s)
-      setSyncStatus(s === 'connected' ? 'connected' : s === 'error' ? 'offline' : 'connecting')
+    // WebsocketProvider implements the full y-websocket CRDT sync protocol:
+    // state vector exchange, incremental diffs, offline queue
+    const provider = new WebsocketProvider(`${wsBase}/yjs`, sessionId, ydoc, {
+      connect: true,
+    })
+    providerRef.current = provider
+
+    provider.on('status', (event: { status: string }) => {
+      console.log('[CodeEditor] Yjs status:', event.status)
+      if (event.status === 'connected')    setSyncStatus('live')
+      else if (event.status === 'disconnected') setSyncStatus('offline')
+      else setSyncStatus('connecting')
     })
 
-    // ── 3. Listen for Yjs text changes → update Monaco editor ───────────────
-    // In Yjs 13.x, observe() provides a single YTextEvent argument.
-    // event.transaction.origin tells us whether the change is local or remote.
+    // ── Listen for Yjs text changes (local OR remote) ─────────────────────
+    // We check the transaction origin to skip echoing local edits back
     ytext.observe((event) => {
-      const newValue = ytext.toString()
-      const isRemote = event.transaction.origin === REMOTE_ORIGIN
+      const isRemote = event.transaction.origin !== null &&
+                       event.transaction.origin !== ydoc
 
-      if (isRemote && editorRef.current) {
-        const currentValue = editorRef.current.getValue()
-        if (currentValue !== newValue) {
-          // Prevent handleEditorChange from re-sending this value back to Yjs
-          applyingRemote.current = true
-          editorRef.current.setValue(newValue)
-          applyingRemote.current = false
-        }
-      }
+      if (!isRemote) return   // local change — Monaco already has this value
+
+      const newValue = ytext.toString()
+      const editor = editorRef.current
+      if (!editor) { setCode(newValue); return }
+
+      const model = editor.getModel()
+      if (!model) { setCode(newValue); return }
+
+      // Apply using Monaco model API (preserves undo history, no cursor jump)
+      applyingRemote.current = true
+      model.pushEditOperations(
+        [],
+        [{ range: model.getFullModelRange(), text: newValue }],
+        () => null
+      )
+      applyingRemote.current = false
 
       setCode(newValue)
     })
 
-    // ── 4. Send LOCAL updates (only) to the server ──────────────────────────
-    // The Yjs 'update' event fires for every change; origin lets us pick only local ones.
-    ydoc.on('update', (update: Uint8Array, origin: any) => {
-      if (origin === REMOTE_ORIGIN) return   // don't echo back
-      provider.sendUpdate(update)            // send local edit to peers
-    })
-
-    // ── 5. Set default content (only on fresh doc) ──────────────────────────
-    // We wait a moment for the server to send initial state before inserting defaults.
+    // ── Initialize content if doc is fresh ───────────────────────────────
+    // Wait briefly for the server to send existing state before inserting defaults
     const initTimer = setTimeout(() => {
       if (ytext.toString() === '') {
-        const defaultCode = LANGUAGE_CONFIGS[language]?.default ?? LANGUAGE_CONFIGS.javascript.default
+        const defaultCode = LANGUAGE_CONFIGS[language]?.default
+          ?? LANGUAGE_CONFIGS.javascript.default
         ydoc.transact(() => {
           ytext.insert(0, defaultCode)
-        }) // origin = null → treated as local → sent to server → stored
+        }, ydoc)   // origin = ydoc → treated as "local, already in Monaco" → ytext observer skips it
       }
-    }, 500)
+    }, 600)
 
     return () => {
       clearTimeout(initTimer)
-      provider.disconnect()
+      provider.destroy()
       ydoc.destroy()
-      yDocRef.current = null
-      yjsProvider.current = null
+      yDocRef.current   = null
+      providerRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
-  // ── Handle Monaco editor value changes (user is typing) ──────────────────
-  const handleEditorChange = (value: string | undefined) => {
+  // ── Monaco onChange: user is typing → update Yjs ─────────────────────────
+  const handleEditorChange = useCallback((value: string | undefined) => {
     if (value === undefined) return
-    if (applyingRemote.current) return   // skip — we set this value ourselves from Yjs
+    if (applyingRemote.current) return
 
     const ydoc = yDocRef.current
     if (!ydoc) return
 
-    const ytext = ydoc.getText('codemirror')
-    if (ytext.toString() === value) return  // nothing changed
+    const ytext = ydoc.getText('monaco')
+    if (ytext.toString() === value) return
 
-    // Update Yjs; origin = null (default) → 'update' observer will send it to server
+    // Wrap in a transaction with origin = ydoc (signals "came from local editor")
+    // so the observe callback above skips updating Monaco again
     ydoc.transact(() => {
       ytext.delete(0, ytext.length)
       ytext.insert(0, value)
-    })
+    }, ydoc)
 
     setCode(value)
-  }
+  }, [setCode])
 
-  // ── Handle Monaco mount ───────────────────────────────────────────────────
-  const handleEditorMount = (editor: any) => {
+  // ── Monaco mount ──────────────────────────────────────────────────────────
+  const handleEditorMount = useCallback((editor: any) => {
     editorRef.current = editor
 
-    if (yDocRef.current) {
-      const ytext = yDocRef.current.getText('codemirror')
-      const current = ytext.toString()
+    const ydoc = yDocRef.current
+    if (ydoc) {
+      const current = ydoc.getText('monaco').toString()
       if (current) {
         applyingRemote.current = true
-        editor.setValue(current)
+        editor.getModel()?.setValue(current)
         applyingRemote.current = false
         setCode(current)
       }
     }
-  }
+  }, [setCode])
 
   // ── Language switch ───────────────────────────────────────────────────────
-  const handleLanguageChange = (newLang: string) => {
+  const handleLanguageChange = useCallback((newLang: string) => {
     setLanguage(newLang)
     const newCode = LANGUAGE_CONFIGS[newLang]?.default ?? LANGUAGE_CONFIGS.javascript.default
 
     const ydoc = yDocRef.current
     if (ydoc) {
-      const ytext = ydoc.getText('codemirror')
+      const ytext = ydoc.getText('monaco')
       ydoc.transact(() => {
         ytext.delete(0, ytext.length)
         ytext.insert(0, newCode)
-      })
+      }, ydoc)   // local origin → observer skips Monaco update
     }
 
-    if (editorRef.current) {
-      applyingRemote.current = true
-      editorRef.current.setValue(newCode)
-      applyingRemote.current = false
-    }
+    applyingRemote.current = true
+    editorRef.current?.getModel()?.setValue(newCode)
+    applyingRemote.current = false
 
     setCode(newCode)
-  }
+  }, [setLanguage, setCode])
 
-  const statusColor = syncStatus === 'connected' ? 'bg-green-600' : syncStatus === 'offline' ? 'bg-red-600' : 'bg-yellow-500'
-  const statusText  = syncStatus === 'connected' ? 'Live' : syncStatus === 'offline' ? 'Offline' : 'Connecting'
+  const statusColor = syncStatus === 'live' ? 'bg-green-600'
+                    : syncStatus === 'offline' ? 'bg-red-600'
+                    : 'bg-yellow-500'
+  const statusText  = syncStatus === 'live' ? 'Live'
+                    : syncStatus === 'offline' ? 'Offline'
+                    : 'Connecting…'
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
+    <div className="h-full flex flex-col bg-gray-900 relative">
       {/* Toolbar */}
       <div className="bg-gray-800 px-3 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
@@ -173,12 +191,13 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
         </select>
       </div>
 
-      {/* Editor */}
+      {/* Monaco */}
       <div className="flex-1 min-h-0">
         <MonacoEditor
           height="100%"
           language={language}
           theme="vs-dark"
+          defaultValue={LANGUAGE_CONFIGS[language]?.default ?? LANGUAGE_CONFIGS.javascript.default}
           onMount={handleEditorMount}
           onChange={handleEditorChange}
           options={{
@@ -193,9 +212,10 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
         />
       </div>
 
+      {/* Offline banner */}
       {syncStatus === 'offline' && (
         <div className="absolute bottom-4 right-4 bg-yellow-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg z-10">
-          🔌 Offline — changes will sync when reconnected
+          🔌 Offline — edits queued, will sync on reconnect
         </div>
       )}
     </div>
