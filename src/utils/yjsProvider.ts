@@ -1,10 +1,11 @@
 import * as Y from 'yjs'
 import { Observable } from 'lib0/observable'
 
+const REMOTE_ORIGIN = 'remote-ws'
+
 export class CustomWebsocketProvider extends Observable<string> {
   private ws: WebSocket | null = null
-  private connected = false
-  private destroyed = false  // prevents reconnect after intentional disconnect
+  private destroyed = false
   private sessionId: string
   private url: string
   private doc: Y.Doc
@@ -21,7 +22,6 @@ export class CustomWebsocketProvider extends Observable<string> {
   connect() {
     if (this.destroyed) return
 
-    // Clear any pending reconnect timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -41,40 +41,30 @@ export class CustomWebsocketProvider extends Observable<string> {
     this.ws.binaryType = 'arraybuffer'
 
     this.ws.onopen = () => {
-      if (this.destroyed) {
-        this.ws?.close()
-        return
-      }
-      console.log('[Yjs] WebSocket connected')
-      this.connected = true
+      if (this.destroyed) { this.ws?.close(); return }
+      console.log('[Yjs] Connected')
       this.emit('status', [{ status: 'connected' }])
     }
 
     this.ws.onmessage = (event) => {
       try {
-        const data = event.data instanceof ArrayBuffer
-          ? new Uint8Array(event.data)
-          : new Uint8Array(event.data)
-        Y.applyUpdate(this.doc, data)
+        const data = new Uint8Array(event.data as ArrayBuffer)
+        // Mark updates as coming from the remote so the doc observer
+        // can distinguish them from local edits and NOT echo back
+        Y.applyUpdate(this.doc, data, REMOTE_ORIGIN)
       } catch (err) {
         console.error('[Yjs] Error applying update:', err)
       }
     }
 
-    this.ws.onerror = (error) => {
-      console.error('[Yjs] WebSocket error:', error)
+    this.ws.onerror = () => {
       this.emit('status', [{ status: 'error' }])
     }
 
     this.ws.onclose = () => {
-      console.log('[Yjs] WebSocket closed')
-      this.connected = false
+      console.log('[Yjs] Closed')
       this.emit('status', [{ status: 'disconnected' }])
-
-      // Only reconnect if not intentionally destroyed
-      if (!this.destroyed) {
-        this.scheduleReconnect()
-      }
+      if (!this.destroyed) this.scheduleReconnect()
     }
   }
 
@@ -82,22 +72,16 @@ export class CustomWebsocketProvider extends Observable<string> {
     if (this.destroyed) return
     this.emit('status', [{ status: 'connecting' }])
     this.reconnectTimer = setTimeout(() => {
-      if (!this.destroyed) {
-        this.connect()
-      }
+      if (!this.destroyed) this.connect()
     }, 3000)
   }
 
   disconnect() {
     this.destroyed = true
-    this.connected = false
-
-    // Cancel any pending reconnect
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-
     if (this.ws) {
       this.ws.close()
       this.ws = null
@@ -111,6 +95,9 @@ export class CustomWebsocketProvider extends Observable<string> {
   }
 
   get connectedState() {
-    return this.connected
+    return this.ws?.readyState === WebSocket.OPEN
   }
 }
+
+// Export the origin constant so CodeEditor can check it
+export { REMOTE_ORIGIN }

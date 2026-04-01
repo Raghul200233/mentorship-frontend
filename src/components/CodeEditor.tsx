@@ -1,159 +1,165 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import MonacoEditor from '@monaco-editor/react'
-import { CustomWebsocketProvider } from '@/utils/yjsProvider'
+import { CustomWebsocketProvider, REMOTE_ORIGIN } from '@/utils/yjsProvider'
 
-const LANGUAGE_CONFIGS = {
-  javascript: { name: 'JavaScript', default: '// JavaScript Code\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();' },
-  python: { name: 'Python', default: '# Python Code\n\ndef hello():\n    print("Hello, World!")\n\nhello()' },
-  html: { name: 'HTML', default: '<!-- HTML Code -->\n<h1>Hello World</h1>' },
-  css: { name: 'CSS', default: '/* CSS Code */\nbody {\n    margin: 0;\n    padding: 20px;\n    background: #f0f0f0;\n}' },
-  java: { name: 'Java', default: '// Java Code\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}' },
-  cpp: { name: 'C++', default: '// C++ Code\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}' },
+const LANGUAGE_CONFIGS: Record<string, { name: string; default: string }> = {
+  javascript: { name: 'JavaScript', default: '// JavaScript\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();' },
+  python:     { name: 'Python',     default: '# Python\n\ndef hello():\n    print("Hello, World!")\n\nhello()' },
+  html:       { name: 'HTML',       default: '<!-- HTML -->\n<h1>Hello World</h1>' },
+  css:        { name: 'CSS',        default: '/* CSS */\nbody {\n  margin: 0;\n  background: #1e1e1e;\n}' },
+  java:       { name: 'Java',       default: '// Java\npublic class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello, World!");\n  }\n}' },
+  cpp:        { name: 'C++',        default: '// C++\n#include <iostream>\n\nint main() {\n  std::cout << "Hello, World!" << std::endl;\n  return 0;\n}' },
 }
 
 export function CodeEditor({ socket, code, setCode, sessionId, language, setLanguage }: any) {
   const editorRef = useRef<any>(null)
-  const yjsProvider = useRef<any>(null)
-  const yDocRef = useRef<any>(null)
-  const [syncStatus, setSyncStatus] = useState('connecting')
-  const [isOnline, setIsOnline] = useState(true)
-  const isRemoteUpdate = useRef(false)
+  const yjsProvider = useRef<CustomWebsocketProvider | null>(null)
+  const yDocRef = useRef<Y.Doc | null>(null)
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting')
 
-  // Monitor online/offline
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [])
+  // Track whether we are currently applying a remote update to the editor
+  // so handleEditorChange doesn't re-send it back to the server
+  const applyingRemote = useRef(false)
 
-  // Setup Yjs
   useEffect(() => {
     if (!sessionId) return
 
-    // Create Yjs document
+    // ── 1. Create Yjs document ──────────────────────────────────────────────
     const ydoc = new Y.Doc()
     yDocRef.current = ydoc
     const ytext = ydoc.getText('codemirror')
 
-    // Set initial content
-    const defaultCode = LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS]?.default || LANGUAGE_CONFIGS.javascript.default
-    if (ytext.toString() === '') {
-      ytext.insert(0, defaultCode)
-    }
-
-    // Setup custom WebSocket provider
+    // ── 2. Connect to backend Yjs WebSocket ─────────────────────────────────
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
-    const wsUrl = backendUrl.replace('http', 'ws').replace('https', 'wss')
-    
+    const wsUrl = backendUrl.replace(/^http/, 'ws').replace(/^https/, 'wss')
     const provider = new CustomWebsocketProvider(wsUrl, sessionId, ydoc)
     yjsProvider.current = provider
 
-    // Track connection status
     provider.on('status', (event: any) => {
-      console.log('Yjs status:', event.status)
-      setSyncStatus(event.status === 'connected' ? 'connected' : 'connecting')
+      const s = event.status
+      console.log('[CodeEditor] Yjs status:', s)
+      setSyncStatus(s === 'connected' ? 'connected' : s === 'error' ? 'offline' : 'connecting')
     })
 
-    // Handle Yjs changes
-    const handleYjsChange = () => {
-      if (!isRemoteUpdate.current && editorRef.current) {
-        const newValue = ytext.toString()
-        setCode(newValue)
+    // ── 3. Listen for remote (and initial) doc changes → update editor ──────
+    ytext.observe((_event, transaction) => {
+      // transaction.origin === REMOTE_ORIGIN means it came from the server
+      // transaction.origin === null means it's local (from handleEditorChange)
+      const newValue = ytext.toString()
+      const isRemote = transaction.origin === REMOTE_ORIGIN
+
+      if (isRemote && editorRef.current) {
+        const currentValue = editorRef.current.getValue()
+        if (currentValue !== newValue) {
+          // Tell handleEditorChange to ignore this synthetic value change
+          applyingRemote.current = true
+          editorRef.current.setValue(newValue)
+          applyingRemote.current = false
+        }
       }
-    }
-    ytext.observe(handleYjsChange)
 
-    // Send local changes to peers
-    const observer = (event: any) => {
-      if (isRemoteUpdate.current) return
-      const update = Y.encodeStateAsUpdate(ydoc)
-      provider.sendUpdate(update)
-    }
-    ydoc.on('update', observer)
+      setCode(newValue)
+    })
 
-    // Cleanup
+    // ── 4. Send LOCAL updates (only) to the server ──────────────────────────
+    // The Yjs 'update' event fires for every change; origin lets us pick only local ones.
+    ydoc.on('update', (update: Uint8Array, origin: any) => {
+      if (origin === REMOTE_ORIGIN) return   // don't echo back
+      provider.sendUpdate(update)            // send local edit to peers
+    })
+
+    // ── 5. Set default content (only on fresh doc) ──────────────────────────
+    // We wait a moment for the server to send initial state before inserting defaults.
+    const initTimer = setTimeout(() => {
+      if (ytext.toString() === '') {
+        const defaultCode = LANGUAGE_CONFIGS[language]?.default ?? LANGUAGE_CONFIGS.javascript.default
+        ydoc.transact(() => {
+          ytext.insert(0, defaultCode)
+        }) // origin = null → treated as local → sent to server → stored
+      }
+    }, 500)
+
     return () => {
-      ydoc.off('update', observer)
-      ytext.unobserve(handleYjsChange)
+      clearTimeout(initTimer)
       provider.disconnect()
       ydoc.destroy()
+      yDocRef.current = null
+      yjsProvider.current = null
     }
-  }, [sessionId, isOnline])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
 
-  // Handle editor changes
+  // ── Handle Monaco editor value changes (user is typing) ──────────────────
   const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined && yDocRef.current && !isRemoteUpdate.current) {
-      isRemoteUpdate.current = true
-      const ytext = yDocRef.current.getText('codemirror')
-      // Update Yjs
+    if (value === undefined) return
+    if (applyingRemote.current) return   // skip — we set this value ourselves from Yjs
+
+    const ydoc = yDocRef.current
+    if (!ydoc) return
+
+    const ytext = ydoc.getText('codemirror')
+    if (ytext.toString() === value) return  // nothing changed
+
+    // Update Yjs; origin = null (default) → 'update' observer will send it to server
+    ydoc.transact(() => {
       ytext.delete(0, ytext.length)
       ytext.insert(0, value)
-      setCode(value)
-      setTimeout(() => {
-        isRemoteUpdate.current = false
-      }, 100)
-    }
+    })
+
+    setCode(value)
   }
 
-  // Handle editor mount
+  // ── Handle Monaco mount ───────────────────────────────────────────────────
   const handleEditorMount = (editor: any) => {
     editorRef.current = editor
-    
-    // Set initial value
+
     if (yDocRef.current) {
       const ytext = yDocRef.current.getText('codemirror')
-      const initialValue = ytext.toString()
-      editor.setValue(initialValue)
-      setCode(initialValue)
+      const current = ytext.toString()
+      if (current) {
+        applyingRemote.current = true
+        editor.setValue(current)
+        applyingRemote.current = false
+        setCode(current)
+      }
     }
   }
 
-  // Handle language change
+  // ── Language switch ───────────────────────────────────────────────────────
   const handleLanguageChange = (newLang: string) => {
     setLanguage(newLang)
-    const newCode = LANGUAGE_CONFIGS[newLang as keyof typeof LANGUAGE_CONFIGS]?.default || LANGUAGE_CONFIGS.javascript.default
-    
-    if (yDocRef.current) {
-      isRemoteUpdate.current = true
-      const ytext = yDocRef.current.getText('codemirror')
-      ytext.delete(0, ytext.length)
-      ytext.insert(0, newCode)
-      setTimeout(() => {
-        isRemoteUpdate.current = false
-      }, 100)
+    const newCode = LANGUAGE_CONFIGS[newLang]?.default ?? LANGUAGE_CONFIGS.javascript.default
+
+    const ydoc = yDocRef.current
+    if (ydoc) {
+      const ytext = ydoc.getText('codemirror')
+      ydoc.transact(() => {
+        ytext.delete(0, ytext.length)
+        ytext.insert(0, newCode)
+      })
     }
-    
+
     if (editorRef.current) {
+      applyingRemote.current = true
       editorRef.current.setValue(newCode)
+      applyingRemote.current = false
     }
+
     setCode(newCode)
   }
 
-  const getStatusColor = () => {
-    if (syncStatus === 'connected') return 'bg-green-600'
-    if (syncStatus === 'connecting') return 'bg-yellow-600'
-    return 'bg-red-600'
-  }
-
-  const getStatusText = () => {
-    if (syncStatus === 'connected') return 'Live'
-    if (syncStatus === 'connecting') return 'Connecting'
-    return 'Offline'
-  }
+  const statusColor = syncStatus === 'connected' ? 'bg-green-600' : syncStatus === 'offline' ? 'bg-red-600' : 'bg-yellow-500'
+  const statusText  = syncStatus === 'connected' ? 'Live' : syncStatus === 'offline' ? 'Offline' : 'Connecting'
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      <div className="bg-gray-800 p-3 border-b border-gray-700 flex justify-between items-center">
+      {/* Toolbar */}
+      <div className="bg-gray-800 px-3 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="text-white text-sm font-semibold">✏️ Collaborative Code Editor</h3>
-          <span className={`text-xs px-2 py-1 rounded ${getStatusColor()} text-white`}>
-            {getStatusText()}
+          <span className="text-white text-sm font-semibold">✏️ Collaborative Editor</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full text-white font-medium ${statusColor}`}>
+            {statusText}
           </span>
         </div>
         <select
@@ -161,12 +167,14 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
           onChange={(e) => handleLanguageChange(e.target.value)}
           className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
-            <option key={key} value={key}>{config.name}</option>
+          {Object.entries(LANGUAGE_CONFIGS).map(([key, cfg]) => (
+            <option key={key} value={key}>{cfg.name}</option>
           ))}
         </select>
       </div>
-      <div className="flex-1">
+
+      {/* Editor */}
+      <div className="flex-1 min-h-0">
         <MonacoEditor
           height="100%"
           language={language}
@@ -179,12 +187,15 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
             automaticLayout: true,
             scrollBeyondLastLine: false,
             wordWrap: 'on',
+            lineNumbers: 'on',
+            renderLineHighlight: 'all',
           }}
         />
       </div>
+
       {syncStatus === 'offline' && (
         <div className="absolute bottom-4 right-4 bg-yellow-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg z-10">
-          🔌 Offline Mode - Changes will sync when online
+          🔌 Offline — changes will sync when reconnected
         </div>
       )}
     </div>
