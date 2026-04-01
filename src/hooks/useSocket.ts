@@ -8,7 +8,8 @@ export const useSocket = (sessionId: string, userId: string) => {
   useEffect(() => {
     if (!sessionId || !userId) return;
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    // Use the correct backend URL
+    const backendUrl = 'https://mentorship-backend-tvcf.onrender.com';
     
     console.log('Connecting to socket server:', backendUrl);
     
@@ -20,6 +21,7 @@ export const useSocket = (sessionId: string, userId: string) => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
+      withCredentials: true,
     });
 
     newSocket.on('connect', () => {
@@ -28,7 +30,7 @@ export const useSocket = (sessionId: string, userId: string) => {
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.error('Socket connection error:', error.message);
       setIsConnected(false);
     });
 
