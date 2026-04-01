@@ -1,59 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
-export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
-  const [isCallActive, setIsCallActive] = useState(false)
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true)
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true)
+export function VideoCall({ socket, userId, sessionId }: any) {
+  const [isActive, setIsActive] = useState(false)
+  const [videoEnabled, setVideoEnabled] = useState(true)
+  const [audioEnabled, setAudioEnabled] = useState(true)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
-  const [connectionState, setConnectionState] = useState('new')
+  const [status, setStatus] = useState('disconnected')
   
-  const localVideoRef = useRef<HTMLVideoElement>(null)
-  const remoteVideoRef = useRef<HTMLVideoElement>(null)
-  const pcRef = useRef<RTCPeerConnection | null>(null)
+  const localVideo = useRef<HTMLVideoElement>(null)
+  const remoteVideo = useRef<HTMLVideoElement>(null)
+  const pc = useRef<RTCPeerConnection | null>(null)
 
-  // Create peer connection
-  const createPeerConnection = () => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    })
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('webrtc-ice-candidate', { sessionId, candidate: event.candidate })
-      }
-    }
-
-    pc.oniceconnectionstatechange = () => {
-      console.log('ICE state:', pc.iceConnectionState)
-      setConnectionState(pc.iceConnectionState)
-    }
-
-    pc.ontrack = (event) => {
-      console.log('Got remote track')
-      setRemoteStream(event.streams[0])
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0]
-      }
-    }
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream)
-      })
-    }
-
-    return pc
-  }
-
-  // Start local camera
-  const startLocalStream = async () => {
+  const getMedia = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       setLocalStream(stream)
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-      }
+      if (localVideo.current) localVideo.current.srcObject = stream
       return stream
     } catch (err) {
       console.error('Camera error:', err)
@@ -62,120 +25,144 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
     }
   }
 
-  // Start call
-  const startCall = async () => {
-    const stream = await startLocalStream()
-    if (!stream) return
+  const createPeer = () => {
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    })
 
-    const pc = createPeerConnection()
-    pcRef.current = pc
+    peer.onicecandidate = (e) => {
+      if (e.candidate && socket) {
+        socket.emit('webrtc-ice-candidate', { candidate: e.candidate })
+      }
+    }
 
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-    socket.emit('webrtc-offer', { sessionId, offer: pc.localDescription })
-    
-    setIsCallActive(true)
+    peer.oniceconnectionstatechange = () => {
+      setStatus(peer.iceConnectionState)
+    }
+
+    peer.ontrack = (e) => {
+      setRemoteStream(e.streams[0])
+      if (remoteVideo.current) remoteVideo.current.srcObject = e.streams[0]
+    }
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => peer.addTrack(track, localStream))
+    }
+
+    return peer
   }
 
-  // Handle incoming offer
+  const startCall = async () => {
+    const stream = await getMedia()
+    if (!stream) return
+
+    const peer = createPeer()
+    pc.current = peer
+
+    const offer = await peer.createOffer()
+    await peer.setLocalDescription(offer)
+    socket.emit('webrtc-offer', { offer })
+    
+    setIsActive(true)
+  }
+
   useEffect(() => {
     if (!socket) return
 
     const handleOffer = async ({ offer, fromUserId }: any) => {
       if (fromUserId === userId) return
-      console.log('Received offer')
       
-      const stream = await startLocalStream()
+      const stream = await getMedia()
       if (!stream) return
 
-      const pc = createPeerConnection()
-      pcRef.current = pc
+      const peer = createPeer()
+      pc.current = peer
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      socket.emit('webrtc-answer', { sessionId, answer: pc.localDescription })
+      await peer.setRemoteDescription(new RTCSessionDescription(offer))
+      const answer = await peer.createAnswer()
+      await peer.setLocalDescription(answer)
+      socket.emit('webrtc-answer', { answer })
       
-      setIsCallActive(true)
+      setIsActive(true)
     }
 
     const handleAnswer = async ({ answer }: any) => {
-      if (pcRef.current) {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer))
+      if (pc.current) {
+        await pc.current.setRemoteDescription(new RTCSessionDescription(answer))
       }
     }
 
-    const handleIceCandidate = async ({ candidate }: any) => {
-      if (pcRef.current) {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+    const handleIce = async ({ candidate }: any) => {
+      if (pc.current) {
+        await pc.current.addIceCandidate(new RTCIceCandidate(candidate))
       }
     }
 
-    const handlePeerEndedCall = () => {
+    const handleEndCall = () => {
+      if (remoteVideo.current) remoteVideo.current.srcObject = null
       setRemoteStream(null)
-      setIsCallActive(false)
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+      setIsActive(false)
+      setStatus('disconnected')
     }
 
     socket.on('webrtc-offer', handleOffer)
     socket.on('webrtc-answer', handleAnswer)
-    socket.on('webrtc-ice-candidate', handleIceCandidate)
-    socket.on('peer-ended-call', handlePeerEndedCall)
+    socket.on('webrtc-ice-candidate', handleIce)
+    socket.on('peer-ended-call', handleEndCall)
 
     return () => {
       socket.off('webrtc-offer', handleOffer)
       socket.off('webrtc-answer', handleAnswer)
-      socket.off('webrtc-ice-candidate', handleIceCandidate)
-      socket.off('peer-ended-call', handlePeerEndedCall)
+      socket.off('webrtc-ice-candidate', handleIce)
+      socket.off('peer-ended-call', handleEndCall)
     }
   }, [socket, userId])
 
-  // Toggle video
   const toggleVideo = () => {
     if (localStream) {
       const track = localStream.getVideoTracks()[0]
       if (track) {
-        track.enabled = !isVideoEnabled
-        setIsVideoEnabled(!isVideoEnabled)
+        track.enabled = !videoEnabled
+        setVideoEnabled(!videoEnabled)
       }
     }
   }
 
-  // Toggle audio
   const toggleAudio = () => {
     if (localStream) {
       const track = localStream.getAudioTracks()[0]
       if (track) {
-        track.enabled = !isAudioEnabled
-        setIsAudioEnabled(!isAudioEnabled)
+        track.enabled = !audioEnabled
+        setAudioEnabled(!audioEnabled)
       }
     }
   }
 
-  // End call
   const endCall = () => {
-    if (pcRef.current) {
-      pcRef.current.close()
-      pcRef.current = null
+    if (pc.current) {
+      pc.current.close()
+      pc.current = null
     }
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop())
+      localStream.getTracks().forEach(t => t.stop())
       setLocalStream(null)
     }
+    if (localVideo.current) localVideo.current.srcObject = null
+    if (remoteVideo.current) remoteVideo.current.srcObject = null
     setRemoteStream(null)
-    setIsCallActive(false)
-    socket.emit('end-call', { sessionId })
+    setIsActive(false)
+    socket.emit('end-call', {})
   }
 
-  const getStatus = () => {
-    if (connectionState === 'connected') return 'Connected'
-    if (connectionState === 'connecting') return 'Connecting...'
+  const getStatusText = () => {
+    if (status === 'connected') return 'Connected'
+    if (status === 'connecting') return 'Connecting...'
     return 'Disconnected'
   }
 
   return (
     <div className="bg-gray-800">
-      {!isCallActive ? (
+      {!isActive ? (
         <div className="p-6 text-center">
           <button
             onClick={startCall}
@@ -186,59 +173,29 @@ export function VideoCall({ socket, userId, sessionId, isMentor }: any) {
         </div>
       ) : (
         <>
-          {/* Video Grid */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-gray-900">
-            {/* Remote Video */}
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                {remoteStream ? 'Peer' : getStatus()}
+            <div className="relative bg-black rounded-lg aspect-video">
+              <video ref={remoteVideo} autoPlay playsInline className="w-full h-full object-cover" />
+              <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                {remoteStream ? 'Peer' : getStatusText()}
               </div>
             </div>
-
-            {/* Local Video */}
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                You {!isVideoEnabled && '(Off)'}
+            <div className="relative bg-black rounded-lg aspect-video">
+              <video ref={localVideo} autoPlay muted playsInline className="w-full h-full object-cover" />
+              <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                You {!videoEnabled && '(Off)'}
               </div>
             </div>
           </div>
-
-          {/* Controls */}
-          <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t border-gray-700">
-            <button
-              onClick={toggleAudio}
-              className={`px-4 py-2 rounded-full text-sm ${
-                isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'
-              } text-white`}
-            >
-              {isAudioEnabled ? 'Mic On' : 'Mic Off'}
+          <div className="flex justify-center gap-4 p-3 bg-gray-800 border-t">
+            <button onClick={toggleAudio} className={`px-4 py-2 rounded-full ${audioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white`}>
+              {audioEnabled ? '🎤 Mic On' : '🔇 Mic Off'}
             </button>
-            <button
-              onClick={toggleVideo}
-              className={`px-4 py-2 rounded-full text-sm ${
-                isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'
-              } text-white`}
-            >
-              {isVideoEnabled ? 'Camera On' : 'Camera Off'}
+            <button onClick={toggleVideo} className={`px-4 py-2 rounded-full ${videoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white`}>
+              {videoEnabled ? '🎥 Camera On' : '📷 Camera Off'}
             </button>
-            <button
-              onClick={endCall}
-              className="px-4 py-2 rounded-full bg-red-600 text-white text-sm"
-            >
-              End Call
+            <button onClick={endCall} className="px-4 py-2 rounded-full bg-red-600 text-white">
+              📞 End Call
             </button>
           </div>
         </>

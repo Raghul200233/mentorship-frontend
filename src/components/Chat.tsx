@@ -9,11 +9,11 @@ export function Chat({ socket, userId, sessionId }: any) {
     if (!socket) return
 
     const handleMessage = (msg: any) => {
-      console.log('Received:', msg)
       setMessages(prev => [...prev, msg])
     }
 
     socket.on('chat-message', handleMessage)
+
     return () => {
       socket.off('chat-message', handleMessage)
     }
@@ -34,8 +34,7 @@ export function Chat({ socket, userId, sessionId }: any) {
       timestamp: new Date()
     }
 
-    socket.emit('chat-message', { sessionId, message: msg })
-    setMessages(prev => [...prev, msg])
+    socket.emit('chat-message', { message: msg })
     setInput('')
   }
 
@@ -45,8 +44,8 @@ export function Chat({ socket, userId, sessionId }: any) {
 
   return (
     <div className="h-full flex flex-col bg-gray-800">
-      <div className="bg-gray-700 p-3 border-b border-gray-600">
-        <h3 className="text-white font-semibold">💬 Chat</h3>
+      <div className="bg-gray-700 p-3 border-b">
+        <h3 className="text-white">💬 Chat</h3>
       </div>
       
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -70,7 +69,7 @@ export function Chat({ socket, userId, sessionId }: any) {
         <div ref={bottomRef} />
       </div>
       
-      <div className="p-3 border-t border-gray-700">
+      <div className="p-3 border-t">
         <div className="flex gap-2">
           <input
             type="text"
@@ -80,10 +79,7 @@ export function Chat({ socket, userId, sessionId }: any) {
             placeholder="Type a message..."
             className="flex-1 px-3 py-2 bg-gray-700 text-white rounded-lg"
           />
-          <button
-            onClick={sendMessage}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-          >
+          <button onClick={sendMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg">
             Send
           </button>
         </div>
