@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
 import MonacoEditor from '@monaco-editor/react'
+import { CustomWebsocketProvider } from '@/utils/yjsProvider'
 
 const LANGUAGE_CONFIGS = {
   javascript: { name: 'JavaScript', default: '// JavaScript Code\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();' },
@@ -47,29 +47,17 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
       ytext.insert(0, defaultCode)
     }
 
-    // Correct WebSocket URL format - use query parameter, not path
+    // Setup custom WebSocket provider
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
     const wsUrl = backendUrl.replace('http', 'ws').replace('https', 'wss')
-    const fullUrl = `${wsUrl}/yjs?sessionId=${sessionId}`
     
-    console.log('Yjs connecting to:', fullUrl)
-    
-    const provider = new WebsocketProvider(
-      `${wsUrl}/yjs`,
-      sessionId,
-      ydoc,
-      { connect: isOnline }
-    )
+    const provider = new CustomWebsocketProvider(wsUrl, sessionId, ydoc)
     yjsProvider.current = provider
 
     // Track connection status
     provider.on('status', (event: any) => {
       console.log('Yjs status:', event.status)
-      setSyncStatus(event.status)
-    })
-
-    provider.on('error', (err: any) => {
-      console.error('Yjs error:', err)
+      setSyncStatus(event.status === 'connected' ? 'connected' : 'connecting')
     })
 
     // Handle Yjs changes
@@ -81,10 +69,19 @@ export function CodeEditor({ socket, code, setCode, sessionId, language, setLang
     }
     ytext.observe(handleYjsChange)
 
+    // Send local changes to peers
+    const observer = (event: any) => {
+      if (isRemoteUpdate.current) return
+      const update = Y.encodeStateAsUpdate(ydoc)
+      provider.sendUpdate(update)
+    }
+    ydoc.on('update', observer)
+
     // Cleanup
     return () => {
+      ydoc.off('update', observer)
       ytext.unobserve(handleYjsChange)
-      provider.destroy()
+      provider.disconnect()
       ydoc.destroy()
     }
   }, [sessionId, isOnline])
